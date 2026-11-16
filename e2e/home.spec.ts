@@ -293,6 +293,8 @@ test.describe('trang chủ và playlist', () => {
     await mock({ library: LIBRARY });
     await page.goto('/');
     await page.locator('.pl-card', { hasText: 'Bài tủ cuối tuần' }).click();
+    // Đợi trang playlist vẽ xong (đủ hàng bài) rồi mới đo, nếu không số nút đo được thay đổi theo tốc độ vẽ.
+    await expect(page.getByRole('list', { name: 'Danh sách bài hát' }).getByRole('listitem')).toHaveCount(4);
 
     const radii = await page.evaluate(() =>
       [...document.querySelectorAll<HTMLElement>('.btn, .icon-btn')]

@@ -51,6 +51,8 @@ export type MockOptions = {
   member?: boolean;
   /** Độ trễ (ms) của mọi yêu cầu REST/RPC, để kiểm tra trạng thái chờ. */
   latencyMs?: number;
+  /** false: đóng kết nối Realtime ngay (để thử cơ chế tải lại định kỳ). */
+  realtime?: boolean;
 };
 
 const ROOM_ID = 'cccccccc-0000-4000-8000-0000000000aa';
@@ -119,6 +121,7 @@ export class MockBackend {
       startPaused: false,
       member: true,
       latencyMs: 0,
+      realtime: true,
       ...opts,
     };
     this.signedIn = this.opts.signedIn;
@@ -404,6 +407,10 @@ export class MockBackend {
     await page.route(`${ORIGIN}/**`, (route) => this.handle(route));
 
     await page.routeWebSocket(/realtime\/v1\/websocket/, (ws) => {
+      if (!this.opts.realtime) {
+        void ws.close();
+        return;
+      }
       ws.onMessage((raw) => {
         const [joinRef, ref, topic, event, payload] = JSON.parse(String(raw)) as [string | null, string | null, string, string, Record<string, any>];
         if (event === 'phx_join') {

@@ -104,4 +104,41 @@ test.describe('bố cục và giao diện', () => {
 
     await expect(page.locator('.eq i').first()).toHaveCSS('animation-name', 'none');
   });
+
+  test('ô nhập có thanh bao quanh: vòng focus nằm ở thanh, không lồng thêm vòng quanh ô nhập', async ({ page, mock }) => {
+    await mock({ songs: [{ title: 'Nơi này có anh' }], library: [{ name: 'A', songs: [{ title: 'x' }] }] });
+
+    // Thanh thêm link trong phòng
+    await page.goto('/room/K7Q2MX');
+    await page.getByRole('textbox', { name: 'Link YouTube' }).focus();
+    const addBar = await page.getByRole('textbox', { name: 'Link YouTube' }).evaluate((input) => {
+      const bar = input.closest('.room-add-row')!;
+      return { inputOutline: getComputedStyle(input).outlineStyle, barShadow: getComputedStyle(bar).boxShadow };
+    });
+    expect(addBar.inputOutline, 'ô nhập không được có outline riêng').toBe('none');
+    expect(addBar.barShadow, 'thanh bao quanh phải sáng viền khi focus').not.toBe('none');
+
+    // Ô tìm kiếm ở thanh trên
+    await page.goto('/');
+    await page.getByRole('searchbox').focus();
+    const search = await page.getByRole('searchbox').evaluate((input) => ({
+      inputOutline: getComputedStyle(input).outlineStyle,
+      barShadow: getComputedStyle(input.closest('.search-field')!).boxShadow,
+    }));
+    expect(search.inputOutline).toBe('none');
+    expect(search.barShadow).not.toBe('none');
+  });
+
+  test('nút và liên kết vẫn có vòng focus khi dùng bàn phím', async ({ page, mock }) => {
+    await mock({ library: [{ name: 'A', songs: [{ title: 'x' }] }] });
+    await page.goto('/');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    const outline = await page.evaluate(() => {
+      const el = document.activeElement as HTMLElement;
+      return { tag: el.tagName, style: getComputedStyle(el).outlineStyle };
+    });
+    expect(outline.tag).not.toBe('BODY');
+    if (outline.tag !== 'INPUT') expect(outline.style).not.toBe('none');
+  });
 });

@@ -51,4 +51,56 @@ test.describe('vào phòng', () => {
       p_control_mode: 'everyone',
     });
   });
+
+  for (const badCode of ['11', 'ABCDE', 'ABCDEFG', 'K7Q2M0', 'K7Q2MI', 'abc-12']) {
+    test(`mã sai định dạng "${badCode}": báo ngay, không bắt nhập tên`, async ({ page, mock }) => {
+      const backend = await mock({ signedIn: false });
+      const signups: string[] = [];
+      page.on('request', (req) => req.url().includes('/auth/v1/signup') && signups.push(req.url()));
+
+      await page.goto(`/join/${badCode}`);
+
+      await expect(page.getByRole('heading', { name: 'Mã phòng không hợp lệ' })).toBeVisible();
+      await expect(page.getByText('Mã phòng gồm 6 ký tự')).toBeVisible();
+      await expect(page.getByRole('textbox', { name: 'Tên hiển thị' })).toHaveCount(0);
+      await expect(page.getByRole('link', { name: 'Về trang chủ' })).toBeVisible();
+      expect(signups, 'không được đăng nhập ẩn danh vô ích').toHaveLength(0);
+      expect(backend.rpcCalls.filter((c) => c.fn === 'join_room')).toHaveLength(0);
+
+      await page.getByRole('link', { name: 'Về trang chủ' }).click();
+      await expect(page).toHaveURL(/\/$/);
+    });
+  }
+
+  test('đã đăng nhập mà mở /room/<mã sai> cũng ra trang báo mã không hợp lệ', async ({ page, mock }) => {
+    await mock({});
+    await page.goto('/room/11');
+    await expect(page).toHaveURL(/\/join\/11$/);
+    await expect(page.getByRole('heading', { name: 'Mã phòng không hợp lệ' })).toBeVisible();
+  });
+
+  test('mã đúng định dạng (chữ thường) vẫn được nhận', async ({ page, mock }) => {
+    await mock({ signedIn: false, role: 'listener', member: false });
+    await page.goto('/join/k7q2mx');
+    await expect(page.getByRole('heading', { name: 'Nghe nhạc cùng nhau' })).toBeVisible();
+    await expect(page.getByText('K7Q2MX', { exact: true })).toBeVisible();
+  });
+
+  test('hộp thoại "Vào bằng mã": chỉ cho gửi khi mã đủ 6 ký tự hợp lệ', async ({ page, mock }) => {
+    await mock({});
+    await page.goto('/');
+    await page.locator('.topbar').getByRole('button', { name: 'Phòng nghe chung' }).click();
+    await page.getByRole('tab', { name: 'Vào bằng mã' }).click();
+
+    const input = page.getByRole('textbox', { name: /Mã phòng/ });
+    const submit = page.getByRole('button', { name: 'Vào phòng' });
+    await expect(page.getByText('Mã gồm 6 ký tự chữ và số')).toBeVisible();
+    await expect(submit).toBeDisabled();
+    await input.fill('K7Q2M');
+    await expect(submit).toBeDisabled();
+    await input.fill('K7Q2M0'); // có số 0, không nằm trong bảng ký tự của mã phòng
+    await expect(submit).toBeDisabled();
+    await input.fill('k7q2mx');
+    await expect(submit).toBeEnabled();
+  });
 });

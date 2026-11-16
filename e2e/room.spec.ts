@@ -180,4 +180,226 @@ test.describe('phòng nghe chung', () => {
     await expect.poll(() => ytCount(page, 'loadVideoById')).toBe(1);
     await expect(page.locator('.room-now-text strong')).toHaveText('Bài hát thử nghiệm');
   });
+
+  test('xem trước link khác hẳn dòng trong hàng đợi; chỉ thêm khi bấm nút, rồi báo đã thêm', async ({ page, mock }) => {
+    await mock({ songs: SONGS });
+    await joinRoom(page);
+    const queue = page.getByRole('list', { name: 'Hàng đợi' });
+    await expect(queue.getByRole('listitem')).toHaveCount(3);
+
+    await page.getByRole('textbox', { name: 'Link YouTube' }).fill('https://youtu.be/dQw4w9WgXcQ');
+    const preview = page.getByLabel('Xem trước bài sắp thêm');
+
+    // Lỗi cũ: khung xem trước giống hệt một dòng bài hát nên người dùng tưởng bài đã vào hàng đợi.
+    await expect(preview).toContainText('chưa thêm vào hàng đợi');
+    await expect(preview).toContainText('Bài hát thử nghiệm');
+    await expect(queue.getByRole('listitem')).toHaveCount(3); // xem trước KHÔNG phải một dòng của hàng đợi
+    await expect(queue.getByText('Bài hát thử nghiệm')).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: /Hàng đợi \(3\)/ })).toBeVisible();
+    const dashed = await preview.evaluate((el) => getComputedStyle(el).borderTopStyle);
+    expect(dashed).toBe('dashed');
+
+    await page.getByRole('button', { name: 'Thêm vào hàng đợi' }).click();
+    await expect(queue.getByRole('listitem')).toHaveCount(4);
+    await expect(queue.getByText('Bài hát thử nghiệm')).toBeVisible();
+    await expect(page.getByRole('tab', { name: /Hàng đợi \(4\)/ })).toBeVisible();
+    await expect(preview).toHaveCount(0);
+    await expect(page.getByRole('status')).toContainText('Đã thêm “Bài hát thử nghiệm” vào hàng đợi');
+  });
+
+  test('hiện lỗi thật của máy chủ khi thêm bài không được (ví dụ quá giới hạn)', async ({ page, mock }) => {
+    await mock({ songs: [{ title: 'a' }, { title: 'b' }, { title: 'c' }, { title: 'd' }, { title: 'e' }, { title: 'f' }] });
+    await joinRoom(page);
+
+    await page.getByRole('textbox', { name: 'Link YouTube' }).fill('https://youtu.be/dQw4w9WgXcQ');
+    await page.getByRole('button', { name: 'Thêm vào hàng đợi' }).click();
+    await expect(page.locator('.room-add-error')).toContainText('giới hạn');
+  });
+
+  test('Realtime rớt: hàng đợi và thành viên vẫn tự đồng bộ lại sau một lúc', async ({ page, mock }) => {
+    const backend = await mock({ role: 'listener', songs: SONGS, realtime: false });
+    await page.clock.install();
+    await page.goto('/room/K7Q2MX');
+    await page.getByRole('button', { name: /tham gia nghe/i }).click();
+    await expect(page.getByText('Đang kết nối lại')).toBeVisible(); // đúng là không có Realtime
+    const queue = page.getByRole('list', { name: 'Hàng đợi' });
+    await expect(queue.getByRole('listitem')).toHaveCount(3);
+
+    backend.remoteAddSong('Bài từ máy khác'); // người khác thêm bài, không có sự kiện Realtime nào tới
+    await page.clock.fastForward(16_000); // quá chu kỳ tải lại định kỳ (15 giây)
+
+    await expect(queue.getByText('Bài từ máy khác')).toBeVisible();
+    await expect(queue.getByRole('listitem')).toHaveCount(4);
+  });
+
+  test.describe('tắt tiếng cá nhân', () => {
+    const muted = (page: Page) =>
+      page.evaluate(() => (window as unknown as { __yt: { players: { muted: boolean }[] } }).__yt.players[0]?.muted);
+
+    test('tắt rồi bật lại: player đổi theo, nút và nhãn trên video phản ánh đúng', async ({ page, mock }) => {
+      await mock({ songs: SONGS });
+      await joinRoom(page);
+      await expect.poll(() => playerState(page)).toBe(1);
+
+      const toggle = page.getByRole('button', { name: 'Tắt tiếng' });
+      await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+      await expect(page.locator('.room-muted-chip')).toHaveCount(0);
+      expect(await muted(page)).toBe(false);
+
+      await toggle.click();
+      await expect.poll(() => muted(page)).toBe(true);
+      await expect(page.getByRole('button', { name: 'Bật tiếng' })).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.locator('.room-muted-chip')).toContainText('Đang tắt tiếng');
+
+      await page.locator('.room-muted-chip').click(); // bấm vào nhãn trên video cũng bật lại tiếng
+      await expect.poll(() => muted(page)).toBe(false);
+      await expect(page.getByRole('button', { name: 'Tắt tiếng' })).toHaveAttribute('aria-pressed', 'false');
+      await expect(page.locator('.room-muted-chip')).toHaveCount(0);
+    });
+
+    test('chỉ riêng máy này: không gửi lệnh nào lên phòng, trạng thái phát không đổi', async ({ page, mock }) => {
+      const backend = await mock({ songs: SONGS });
+      await joinRoom(page);
+      await expect.poll(() => playerState(page)).toBe(1);
+      const before = backend.rpcCalls.length;
+      const versionBefore = backend.state.version;
+
+      await page.getByRole('button', { name: 'Tắt tiếng' }).click();
+      await expect.poll(() => muted(page)).toBe(true);
+      await page.waitForTimeout(500);
+
+      expect(backend.rpcCalls.slice(before).filter((c) => c.fn.startsWith('room_')), 'không được có lệnh phòng nào').toHaveLength(0);
+      expect(backend.state.version).toBe(versionBefore);
+      expect(await playerState(page)).toBe(1); // vẫn đang phát, chỉ không có tiếng
+    });
+
+    test('giữ nguyên trạng thái tắt tiếng khi đổi bài và khi người khác tạm dừng/phát', async ({ page, mock }) => {
+      const backend = await mock({ songs: SONGS });
+      await joinRoom(page);
+      await page.getByRole('button', { name: 'Tắt tiếng' }).click();
+      await expect.poll(() => muted(page)).toBe(true);
+
+      await page.getByRole('button', { name: 'Bài tiếp theo' }).click(); // đổi bài
+      await expect(page.locator('.room-now-text strong')).toHaveText('Em của ngày hôm qua');
+      await expect.poll(() => ytCount(page, 'loadVideoById')).toBe(2);
+      expect(await muted(page), 'đổi bài không được tự bật tiếng').toBe(true);
+      await expect(page.locator('.room-muted-chip')).toBeVisible();
+
+      backend.remotePause(10); // sự kiện từ phòng
+      await expect.poll(() => playerState(page)).toBe(2);
+      expect(await muted(page)).toBe(true);
+    });
+
+    test('người nghe (không có quyền điều khiển) vẫn tự tắt tiếng được', async ({ page, mock }) => {
+      await mock({ role: 'listener', songs: SONGS });
+      await joinRoom(page);
+
+      await page.getByRole('button', { name: 'Tắt tiếng' }).click();
+      await expect.poll(() => muted(page)).toBe(true);
+    });
+
+    test('phím M bật/tắt tiếng, nhưng không bắt khi đang gõ vào ô nhập', async ({ page, mock }) => {
+      await mock({ songs: SONGS });
+      await joinRoom(page);
+
+      await page.keyboard.press('m');
+      await expect.poll(() => muted(page)).toBe(true);
+      await page.keyboard.press('M');
+      await expect.poll(() => muted(page)).toBe(false);
+
+      const input = page.getByRole('textbox', { name: 'Link YouTube' });
+      await input.focus();
+      await input.pressSequentially('mmm');
+      await expect(input).toHaveValue('mmm');
+      expect(await muted(page), 'gõ chữ m trong ô nhập không được đổi tiếng').toBe(false);
+    });
+
+    test('tải lại trang thì trở về mặc định (có tiếng), vì chỉ là tắt tạm', async ({ page, mock }) => {
+      await mock({ songs: SONGS });
+      await joinRoom(page);
+      await page.getByRole('button', { name: 'Tắt tiếng' }).click();
+      await expect.poll(() => muted(page)).toBe(true);
+
+      await page.reload();
+      await page.getByRole('button', { name: /tham gia nghe/i }).click();
+      await expect.poll(() => playerState(page)).toBe(1);
+      expect(await muted(page)).toBe(false);
+      await expect(page.getByRole('button', { name: 'Tắt tiếng' })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    test('nút đủ lớn để chạm (>= 44px) và không làm tràn ngang', async ({ page, mock }) => {
+      await mock({ songs: SONGS });
+      await joinRoom(page);
+
+      const box = (await page.getByRole('button', { name: 'Tắt tiếng' }).boundingBox())!;
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    });
+  });
+
+  test.describe('video không cho nhúng', () => {
+    const roomNext = (backend: { rpcCalls: { fn: string; body: Record<string, unknown> }[] }, reason: string) =>
+      backend.rpcCalls.filter((c) => c.fn === 'room_next' && c.body.p_reason === reason).length;
+    const failVideos = (page: Page, ids: string[]) =>
+      page.evaluate((list) => list.forEach((id) => (window as unknown as { __yt: { failIds: Set<string> } }).__yt.failIds.add(id)), ids);
+    const stale = (page: Page) =>
+      page.evaluate(() => (window as unknown as { __yt: { fireStaleError: (c: number) => void } }).__yt.fireStaleError(101));
+
+    test('một bài lỗi chỉ bỏ qua đúng bài đó, các bài sau vẫn phát', async ({ page, mock }) => {
+      const backend = await mock({ songs: SONGS });
+      await page.goto('/room/K7Q2MX');
+      await expect(page.getByRole('button', { name: /tham gia nghe/i })).toBeEnabled(); // player giả đã nạp
+      await failVideos(page, ['vid1xxxxxxx']); // bài đầu không nhúng được
+      await page.getByRole('button', { name: /tham gia nghe/i }).click();
+
+      await expect(page.locator('.room-now-text strong')).toHaveText('Em của ngày hôm qua');
+      await expect(page.getByRole('status')).toContainText('Nơi này có anh'); // nói rõ bài nào bị bỏ qua
+      await expect(page.getByRole('list', { name: 'Hàng đợi' }).getByRole('listitem')).toHaveCount(2);
+      await expect.poll(() => playerState(page)).toBe(1);
+      expect(roomNext(backend, 'unplayable')).toBe(1);
+    });
+
+    test('lỗi đến muộn của bài trước KHÔNG được làm bỏ qua bài đang phát bình thường', async ({ page, mock }) => {
+      const backend = await mock({ songs: SONGS });
+      await joinRoom(page);
+      await page.getByRole('button', { name: 'Bài tiếp theo' }).click(); // sang bài hai (đã có 1 lệnh skip)
+      await expect(page.locator('.room-now-text strong')).toHaveText('Em của ngày hôm qua');
+      await expect.poll(() => playerState(page)).toBe(1);
+
+      // Lỗi cũ: sự kiện lỗi của bài một đến sau khi bài hai đã chạy -> bài hai bị gán lỗi và bỏ qua (dây chuyền).
+      await stale(page);
+      await page.waitForTimeout(2200);
+
+      await expect(page.locator('.room-now-text strong')).toHaveText('Em của ngày hôm qua');
+      await expect(page.getByRole('list', { name: 'Hàng đợi' }).getByRole('listitem')).toHaveCount(2);
+      expect(roomNext(backend, 'unplayable'), 'không được có lệnh bỏ qua nào do lỗi muộn').toBe(0);
+    });
+
+    test('nhiều lỗi muộn liên tiếp (nhiều máy cùng báo) cũng không xoá dây chuyền hàng đợi', async ({ page, mock }) => {
+      const backend = await mock({ songs: SONGS });
+      await joinRoom(page);
+      for (let i = 0; i < 4; i += 1) {
+        await stale(page);
+        await page.waitForTimeout(150);
+      }
+      await page.waitForTimeout(2200);
+
+      await expect(page.getByRole('list', { name: 'Hàng đợi' }).getByRole('listitem')).toHaveCount(3);
+      await expect(page.locator('.room-now-text strong')).toHaveText('Nơi này có anh');
+      expect(roomNext(backend, 'unplayable')).toBe(0);
+    });
+
+    test('mọi bài đều không nhúng được: lần lượt bỏ qua từng bài rồi về trạng thái chờ', async ({ page, mock }) => {
+      const backend = await mock({ songs: SONGS });
+      await page.goto('/room/K7Q2MX');
+      await expect(page.getByRole('button', { name: /tham gia nghe/i })).toBeEnabled();
+      await failVideos(page, ['vid1xxxxxxx', 'vid2xxxxxxx', 'vid3xxxxxxx']);
+      await page.getByRole('button', { name: /tham gia nghe/i }).click();
+
+      await expect(page.locator('.room-now-text strong')).toHaveText('Chưa phát bài nào', { timeout: 15_000 });
+      await expect(page.getByText('Hàng đợi đang trống')).toBeVisible();
+      expect(roomNext(backend, 'unplayable')).toBe(3);
+    });
+  });
 });
