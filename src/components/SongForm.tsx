@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, Save, Star, X } from 'lucide-react';
+import { ChevronDown, Save, Star } from 'lucide-react';
+import { Dialog } from './ui/Dialog';
+import { Spinner } from './ui/Spinner';
 import type { Song, SongInput } from '../types';
 import { getYoutubeVideoInfo } from '../lib/youtube';
 
@@ -173,19 +175,24 @@ export function SongForm({ song, existingSongs, onCancel, onSubmit }: Props) {
   }
 
   return (
-    <div className="modal-backdrop">
-      <form className="bottom-sheet song-modal" onSubmit={handleSubmit}>
-        <div className="sheet-header song-modal-header">
-          <div>
-            <h2>{song ? 'Sửa bài hát' : 'Thêm bài hát'}</h2>
-            <p>{song ? 'Cập nhật bài trong playlist' : 'Lưu bài karaoke mới'}</p>
-          </div>
-          <button className="icon-button" type="button" onClick={onCancel} title="Đóng">
-            <X size={20} />
+    <Dialog
+      wide
+      title={song ? 'Sửa bài hát' : 'Thêm bài hát'}
+      subtitle={song ? 'Cập nhật bài trong playlist' : 'Lưu bài karaoke mới'}
+      onClose={onCancel}
+      onSubmit={handleSubmit}
+      actions={
+        <>
+          <button className="btn" type="button" onClick={onCancel}>
+            Huỷ
           </button>
-        </div>
-
-        <div className="song-modal-body">
+          <button className="btn btn-primary" type="submit" disabled={saving || !title.trim()}>
+            {saving ? <Spinner size={18} /> : <Save size={18} />}
+            Lưu
+          </button>
+        </>
+      }
+    >
           {duplicate && (
             <div className="notice">
               Có thể bị trùng với “{duplicate.title}”{duplicate.artist ? ` - ${duplicate.artist}` : ''}.
@@ -238,17 +245,23 @@ export function SongForm({ song, existingSongs, onCancel, onSubmit }: Props) {
 
           {(loadingYoutubeTitle || youtubeTitleMessage) && (
             <p className="form-helper">
-              {loadingYoutubeTitle ? 'Đang lấy tên bài từ YouTube...' : youtubeTitleMessage}
+              {loadingYoutubeTitle ? (
+                <>
+                  <Spinner size={13} /> Lấy tên bài từ YouTube
+                </>
+              ) : (
+                youtubeTitleMessage
+              )}
             </p>
           )}
 
           <div className="song-form-toolbar">
-            <button className="more-toggle" type="button" onClick={() => setShowMore((current) => !current)}>
+            <button className="btn btn-sm" type="button" onClick={() => setShowMore((current) => !current)}>
               Tùy chọn
               <ChevronDown size={18} className={showMore ? 'rotate' : ''} />
             </button>
             <button
-              className={favorite ? 'favorite-toggle song-favorite-toggle active' : 'favorite-toggle song-favorite-toggle'}
+              className={favorite ? 'btn btn-sm is-favorite active' : 'btn btn-sm is-favorite'}
               type="button"
               onClick={() => setFavorite((current) => !current)}
               aria-pressed={favorite}
@@ -276,19 +289,7 @@ export function SongForm({ song, existingSongs, onCancel, onSubmit }: Props) {
           )}
 
           {error && <p className="form-message error">{error}</p>}
-        </div>
-
-        <div className="sheet-actions song-modal-actions">
-          <button className="ghost-button" type="button" onClick={onCancel}>
-            Hủy
-          </button>
-          <button className="primary-button" type="submit" disabled={saving || !title.trim()}>
-            <Save size={18} />
-            {saving ? 'Đang lưu...' : 'Lưu'}
-          </button>
-        </div>
-      </form>
-    </div>
+    </Dialog>
   );
 }
 

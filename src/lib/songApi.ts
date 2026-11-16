@@ -73,3 +73,29 @@ function cleanOptional(value?: string) {
   const cleaned = value?.trim();
   return cleaned ? cleaned : null;
 }
+
+// Tải bài hát của nhiều playlist một lần (trang chủ, yêu thích, bìa playlist).
+export async function getAllSongs(playlistIds: string[]): Promise<Song[]> {
+  if (!playlistIds.length) return [];
+
+  const { data, error } = await supabase
+    .from('songs')
+    .select('*')
+    .in('playlist_id', playlistIds)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data || []) as Song[];
+}
+
+export function toSongInput(song: Song): SongInput {
+  return {
+    title: song.title,
+    artist: song.artist || '',
+    youtube_url: song.youtube_url || '',
+    key: song.key || '',
+    tags: song.tags,
+    note: song.note || '',
+    favorite: song.favorite,
+  };
+}

@@ -81,3 +81,8 @@ export function getYoutubeVideoId(value?: string | null) {
 
   return null;
 }
+
+// Ảnh bìa luôn lấy từ id video đã kiểm tra định dạng, không tin URL do client khác gửi lên.
+export function getVideoThumbnail(videoId?: string | null) {
+  return videoId && /^[\w-]{6,20}$/.test(videoId) ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null;
+}

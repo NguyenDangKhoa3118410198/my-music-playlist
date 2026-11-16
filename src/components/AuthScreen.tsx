@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { LogIn, Music2, UserPlus } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { Spinner } from './ui/Spinner';
 
 export function AuthScreen({ pendingInvite }: { pendingInvite: string | null }) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -40,13 +41,14 @@ export function AuthScreen({ pendingInvite }: { pendingInvite: string | null }) 
   }
 
   return (
-    <main className="auth-shell">
-      <section className="auth-panel">
-        <div className="brand-mark">
+    <main className="center-shell">
+      <div className="room-ambient" aria-hidden="true" />
+      <section className="center-card">
+        <div className="center-icon">
           <Music2 size={30} />
         </div>
         <h1>Karaoke Playlist</h1>
-        <p className="muted">
+        <p>
           Lưu bài tủ, gắn link YouTube và chia sẻ playlist cho buổi hát.
         </p>
 
@@ -104,9 +106,9 @@ export function AuthScreen({ pendingInvite }: { pendingInvite: string | null }) 
               required
             />
           </label>
-          <button className="primary-button" disabled={loading} type="submit">
-            {mode === 'login' ? <LogIn size={18} /> : <UserPlus size={18} />}
-            {loading ? 'Đang xử lý...' : mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản'}
+          <button className="btn btn-primary btn-lg btn-block" disabled={loading} type="submit">
+            {loading ? <Spinner size={18} /> : mode === 'login' ? <LogIn size={18} /> : <UserPlus size={18} />}
+            {mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản'}
           </button>
         </form>
 

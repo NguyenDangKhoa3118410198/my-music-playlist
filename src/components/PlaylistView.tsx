@@ -1,187 +1,190 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Download,
-  Heart,
-  Link2,
-  ListMusic,
-  LogOut,
-  Mic2,
-  Plus,
-  RefreshCw,
-  Search,
-  Share2,
-  Sparkles,
-  Trash2,
-  Upload,
-  X,
-} from 'lucide-react';
-import type { FilterMode, MemberRole, PlaylistWithRole, Song, SongInput } from '../types';
-import { createInvite, buildInviteUrl } from '../lib/inviteApi';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Compass } from 'lucide-react';
+import type { FilterMode, PlaylistWithRole, Song, SongInput } from '../types';
 import { createPlaylist, deletePlaylist, getPlaylists } from '../lib/playlistApi';
-import { createSong, deleteSong, getSongs, importSongs, updateSong } from '../lib/songApi';
+import { createSong, deleteSong, getAllSongs, importSongs, toSongInput, updateSong } from '../lib/songApi';
 import { supabase } from '../lib/supabase';
+import { CreatePlaylistDialog, ShareDialog } from './app/Dialogs';
+import { HomeView } from './app/HomeView';
+import { FavoritesView, LibraryView, SearchResults } from './app/ListViews';
+import { PlaylistDetail } from './app/PlaylistDetail';
+import { Sidebar, type AppView } from './app/Sidebar';
+import { TabBar } from './app/TabBar';
+import { TopBar } from './app/TopBar';
+import { PlaylistDetailSkeleton } from './ui/Skeletons';
 import { PlayerBar } from './PlayerBar';
-import { SearchAndFilters } from './SearchAndFilters';
 import { SongForm } from './SongForm';
-import { SongList } from './SongList';
+
+type QueueSource = { playlistId: string } | { ids: string[] };
+
+function matchesQuery(song: Song, query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return [song.title, song.artist, song.key, song.note, ...song.tags].filter(Boolean).join(' ').toLowerCase().includes(q);
+}
+
+// Trong playlist: bài yêu thích lên trước, rồi theo tên.
+function sortForPlaylist(songs: Song[]) {
+  return [...songs].sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.title.localeCompare(b.title, 'vi'));
+}
 
 export function PlaylistView({ inviteRedeemed }: { inviteRedeemed: string | null }) {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+
+  const playlistMatch = pathname.match(/^\/playlist\/([^/]+)/);
+  const activePlaylistId = playlistMatch?.[1] ?? null;
+  const view: AppView = playlistMatch
+    ? 'playlist'
+    : pathname.startsWith('/library')
+      ? 'library'
+      : pathname.startsWith('/favorites')
+        ? 'favorites'
+        : 'home';
+
   const [playlists, setPlaylists] = useState<PlaylistWithRole[]>([]);
-  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [songs, setSongs] = useState<Song[]>([]);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterMode>('all');
+  const [tag, setTag] = useState<string | null>(null);
+  const [message, setMessage] = useState('');
   const [editingSong, setEditingSong] = useState<Song | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [playlistName, setPlaylistName] = useState('');
-  const [playlistDescription, setPlaylistDescription] = useState('');
-  const [isPlaylistCreatorOpen, setIsPlaylistCreatorOpen] = useState(false);
-  const [inviteRole, setInviteRole] = useState<Exclude<MemberRole, 'owner'>>('viewer');
-  const [inviteUrl, setInviteUrl] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [songsLoading, setSongsLoading] = useState(false);
-  const [message, setMessage] = useState('');
+  const [isCreatorOpen, setIsCreatorOpen] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
+  // Nguồn của hàng đợi phát. Phát cả playlist (không lọc) thì theo dõi playlist đó trực tiếp để bài mới
+  // thêm / bài bị xoá có hiệu lực ngay; các nguồn khác (đã lọc, hàng bài ở trang chủ...) giữ danh sách id.
+  const [queueSource, setQueueSource] = useState<QueueSource>({ ids: [] });
   const [playRequestId, setPlayRequestId] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const activePlaylist = playlists.find((playlist) => playlist.id === activePlaylistId) || null;
-  const canEdit = activePlaylist?.role === 'owner' || activePlaylist?.role === 'editor';
-  const isOwner = activePlaylist?.role === 'owner';
-  const trimmedPlaylistName = playlistName.trim();
-  const favoriteCount = songs.filter((song) => song.favorite).length;
-  const playableCount = songs.filter((song) => song.youtube_url).length;
+  const activePlaylist = playlists.find((playlist) => playlist.id === activePlaylistId) ?? null;
+  const playlistSongs = useMemo(
+    () => sortForPlaylist(songs.filter((song) => song.playlist_id === activePlaylistId)),
+    [songs, activePlaylistId],
+  );
+  const visibleSongs = useMemo(
+    () =>
+      playlistSongs.filter((song) => {
+        const byFilter =
+          filter === 'all' ||
+          (filter === 'favorite' && song.favorite) ||
+          (filter === 'with-youtube' && Boolean(song.youtube_url)) ||
+          (filter === 'missing-youtube' && !song.youtube_url);
+        return byFilter && (!tag || song.tags.includes(tag)) && matchesQuery(song, query);
+      }),
+    [playlistSongs, filter, tag, query],
+  );
   const tagTopics = useMemo(() => {
     const counts = new Map<string, number>();
+    playlistSongs.forEach((song) => song.tags.forEach((t) => counts.set(t, (counts.get(t) || 0) + 1)));
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  }, [playlistSongs]);
+  const queue = useMemo(() => {
+    const byId = new Map(songs.map((song) => [song.id, song]));
+    const list =
+      'playlistId' in queueSource
+        ? sortForPlaylist(songs.filter((song) => song.playlist_id === queueSource.playlistId))
+        : queueSource.ids.map((id) => byId.get(id)).filter((song): song is Song => Boolean(song));
+    return list.filter((song) => song.youtube_url);
+  }, [songs, queueSource]);
+  // Không có bộ lọc/từ khoá nào: danh sách đang xem chính là cả playlist.
+  const isUnfiltered = filter === 'all' && !tag && !query.trim();
+  const searchMatches = useMemo(() => songs.filter((song) => matchesQuery(song, query)), [songs, query]);
 
-    songs.forEach((song) => {
-      song.tags.forEach((tag) => counts.set(tag, (counts.get(tag) || 0) + 1));
-    });
-
-    return Array.from(counts.entries())
-      .sort((first, second) => second[1] - first[1])
-      .slice(0, 6);
-  }, [songs]);
-
-  useEffect(() => {
-    void loadPlaylists();
-  }, []);
-
-  useEffect(() => {
-    if (inviteRedeemed) {
-      setMessage('Đã nhận playlist từ link mời.');
-      void loadPlaylists(inviteRedeemed);
-    }
-  }, [inviteRedeemed]);
-
-  useEffect(() => {
-    if (!activePlaylistId) {
-      setSongs([]);
-      return;
-    }
-    void loadSongs(activePlaylistId);
-  }, [activePlaylistId]);
-
-  useEffect(() => {
-    if (!message) return;
-
-    const timer = window.setTimeout(() => {
-      setMessage('');
-    }, 3200);
-
-    return () => window.clearTimeout(timer);
-  }, [message]);
-
-  const filteredSongs = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    return songs.filter((song) => {
-      const matchesQuery =
-        !normalizedQuery ||
-        [song.title, song.artist, song.key, song.note, ...song.tags]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase()
-          .includes(normalizedQuery);
-
-      const matchesFilter =
-        filter === 'all' ||
-        (filter === 'favorite' && song.favorite) ||
-        (filter === 'with-youtube' && Boolean(song.youtube_url)) ||
-        (filter === 'missing-youtube' && !song.youtube_url);
-
-      return matchesQuery && matchesFilter;
-    });
-  }, [filter, query, songs]);
-  const playableQueue = useMemo(
-    () => filteredSongs.filter((song) => song.youtube_url),
-    [filteredSongs],
-  );
-
-  async function loadPlaylists(preferredPlaylistId?: string) {
-    setLoading(true);
-    if (!preferredPlaylistId) setMessage('');
+  const loadAll = useCallback(async () => {
     try {
       const nextPlaylists = await getPlaylists();
       setPlaylists(nextPlaylists);
-      setActivePlaylistId((current) => {
-        if (
-          preferredPlaylistId &&
-          nextPlaylists.some((playlist) => playlist.id === preferredPlaylistId)
-        ) {
-          return preferredPlaylistId;
-        }
-        if (current && nextPlaylists.some((playlist) => playlist.id === current)) return current;
-        return nextPlaylists[0]?.id || null;
-      });
+      setSongs(await getAllSongs(nextPlaylists.map((playlist) => playlist.id)));
     } catch (error) {
-      setMessage(readError(error, 'Không tải được playlist.'));
+      setMessage(readError(error, 'Không tải được dữ liệu.'));
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    void loadAll();
+  }, [loadAll]);
+
+  useEffect(() => {
+    if (!inviteRedeemed) return;
+    setMessage('Đã nhận playlist từ link mời.');
+    void loadAll().then(() => navigate(`/playlist/${inviteRedeemed}`));
+  }, [inviteRedeemed, loadAll, navigate]);
+
+  useEffect(() => {
+    if (!message) return undefined;
+    const timer = window.setTimeout(() => setMessage(''), 3200);
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
+  // Đổi màn hình thì bỏ lọc cũ.
+  useEffect(() => {
+    setFilter('all');
+    setTag(null);
+  }, [activePlaylistId]);
+
+  const go = useCallback((path: string) => {
+    setQuery('');
+    navigate(path);
+  }, [navigate]);
+
+  // --- Phát nhạc ---
+  function playSong(song: Song, list: Song[], livePlaylistId?: string) {
+    setQueueSource(livePlaylistId ? { playlistId: livePlaylistId } : { ids: (list.length ? list : [song]).map((item) => item.id) });
+    setCurrentSong(song);
+    setPlayRequestId((current) => current + 1);
   }
 
-  async function loadSongs(playlistId: string) {
-    setSongsLoading(true);
-    try {
-      setSongs(await getSongs(playlistId));
-    } catch (error) {
-      setMessage(readError(error, 'Không tải được bài hát.'));
-    } finally {
-      setSongsLoading(false);
+  function step(delta: 1 | -1, shuffle = false) {
+    if (!queue.length) return;
+    const index = currentSong ? queue.findIndex((song) => song.id === currentSong.id) : -1;
+    let next: Song;
+    if (shuffle && queue.length > 1) {
+      const candidates = queue.filter((song) => song.id !== currentSong?.id);
+      next = candidates[Math.floor(Math.random() * candidates.length)];
+    } else if (delta === 1) {
+      next = queue[index >= 0 ? (index + 1) % queue.length : 0];
+    } else {
+      next = queue[index > 0 ? index - 1 : queue.length - 1];
     }
+    setCurrentSong(next);
+    setPlayRequestId((current) => current + 1);
   }
 
-  async function handleCreatePlaylist(event: React.FormEvent) {
-    event.preventDefault();
-    setMessage('');
-    if (!trimmedPlaylistName) return;
+  function playAll(shuffle: boolean) {
+    const playable = visibleSongs.filter((song) => song.youtube_url);
+    if (!playable.length) return;
+    const first = shuffle ? playable[Math.floor(Math.random() * playable.length)] : playable[0];
+    playSong(first, playable, isUnfiltered ? activePlaylistId ?? undefined : undefined);
+  }
 
+  // --- Dữ liệu ---
+  async function handleCreatePlaylist(name: string) {
     try {
-      const playlist = await createPlaylist(trimmedPlaylistName, playlistDescription || null);
-      await loadPlaylists();
-      setActivePlaylistId(playlist.id);
-      setPlaylistName('');
-      setPlaylistDescription('');
-      setIsPlaylistCreatorOpen(false);
+      const playlist = await createPlaylist(name, null);
+      await loadAll();
+      setIsCreatorOpen(false);
+      go(`/playlist/${playlist.id}`);
     } catch (error) {
       setMessage(readError(error, 'Không tạo được playlist.'));
     }
   }
 
-  function handleCancelCreatePlaylist() {
-    setIsPlaylistCreatorOpen(false);
-    setPlaylistName('');
-    setPlaylistDescription('');
-  }
-
   async function handleDeletePlaylist() {
-    if (!activePlaylist || !window.confirm(`Xóa playlist “${activePlaylist.name}”?`)) return;
+    if (!activePlaylist || !window.confirm(`Xoá playlist “${activePlaylist.name}”?`)) return;
     try {
       await deletePlaylist(activePlaylist.id);
-      await loadPlaylists();
-      setMessage('Đã xóa playlist.');
+      await loadAll();
+      setMessage('Đã xoá playlist.');
+      go('/library');
     } catch (error) {
-      setMessage(readError(error, 'Không xóa được playlist.'));
+      setMessage(readError(error, 'Không xoá được playlist.'));
     }
   }
 
@@ -198,55 +201,24 @@ export function PlaylistView({ inviteRedeemed }: { inviteRedeemed: string | null
     setIsFormOpen(false);
   }
 
-  function handlePlaySong(song: Song) {
-    setCurrentSong(song);
-    setPlayRequestId((current) => current + 1);
-  }
-
-  function handleNextSong(shuffle = false) {
-    if (!playableQueue.length) return;
-
-    if (shuffle && playableQueue.length > 1) {
-      const candidates = playableQueue.filter((song) => song.id !== currentSong?.id);
-      handlePlaySong(candidates[Math.floor(Math.random() * candidates.length)]);
-      return;
+  async function handleToggleFavorite(song: Song) {
+    const favorite = !song.favorite;
+    setSongs((current) => current.map((item) => (item.id === song.id ? { ...item, favorite } : item)));
+    try {
+      await updateSong(song.id, { ...toSongInput(song), favorite });
+    } catch (error) {
+      setSongs((current) => current.map((item) => (item.id === song.id ? { ...item, favorite: song.favorite } : item)));
+      setMessage(readError(error, 'Không cập nhật được bài yêu thích.'));
     }
-
-    const currentIndex = currentSong ? playableQueue.findIndex((song) => song.id === currentSong.id) : -1;
-    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % playableQueue.length : 0;
-    handlePlaySong(playableQueue[nextIndex]);
-  }
-
-  function handlePreviousSong() {
-    if (!playableQueue.length) return;
-
-    const currentIndex = currentSong ? playableQueue.findIndex((song) => song.id === currentSong.id) : -1;
-    const previousIndex =
-      currentIndex > 0 ? currentIndex - 1 : playableQueue.length - 1;
-    handlePlaySong(playableQueue[previousIndex]);
   }
 
   async function handleDeleteSong(song: Song) {
-    if (!window.confirm(`Xóa bài “${song.title}”?`)) return;
+    if (!window.confirm(`Xoá bài “${song.title}”?`)) return;
     try {
       await deleteSong(song.id);
       setSongs((current) => current.filter((item) => item.id !== song.id));
     } catch (error) {
-      setMessage(readError(error, 'Không xóa được bài hát.'));
-    }
-  }
-
-  async function handleCreateInvite() {
-    if (!activePlaylist) return;
-    setMessage('');
-    try {
-      const token = await createInvite(activePlaylist.id, inviteRole);
-      const url = buildInviteUrl(token);
-      setInviteUrl(url);
-      await navigator.clipboard?.writeText(url);
-      setMessage('Đã tạo link mời và copy vào clipboard.');
-    } catch (error) {
-      setMessage(readError(error, 'Không tạo được link mời.'));
+      setMessage(readError(error, 'Không xoá được bài hát.'));
     }
   }
 
@@ -258,7 +230,7 @@ export function PlaylistView({ inviteRedeemed }: { inviteRedeemed: string | null
         description: activePlaylist.description,
         exportedAt: new Date().toISOString(),
       },
-      songs: songs.map(({ title, artist, youtube_url, key, tags, note, favorite }) => ({
+      songs: playlistSongs.map(({ title, artist, youtube_url, key, tags, note, favorite }) => ({
         title,
         artist,
         youtube_url,
@@ -287,341 +259,122 @@ export function PlaylistView({ inviteRedeemed }: { inviteRedeemed: string | null
       const parsed = JSON.parse(await file.text()) as { songs?: SongInput[] } | SongInput[];
       const imported = Array.isArray(parsed) ? parsed : parsed.songs || [];
       await importSongs(activePlaylist.id, imported.map(normalizeImportedSong));
-      await loadSongs(activePlaylist.id);
-      setMessage(`Đã import ${imported.length} bài hát.`);
+      await loadAll();
+      setMessage(`Đã nhập ${imported.length} bài hát.`);
     } catch (error) {
-      setMessage(readError(error, 'File import không hợp lệ.'));
+      setMessage(readError(error, 'File nhập không hợp lệ.'));
     }
   }
 
+  const roleOf = (song: Song) => playlists.find((playlist) => playlist.id === song.playlist_id)?.role;
+  const songActions = {
+    currentSongId: currentSong?.id ?? null,
+    canEditSong: (song: Song) => roleOf(song) === 'owner' || roleOf(song) === 'editor',
+    playlistName: (song: Song) => playlists.find((playlist) => playlist.id === song.playlist_id)?.name ?? '',
+    onPlay: playSong,
+    onEdit: (song: Song) => {
+      setEditingSong(song);
+      setIsFormOpen(true);
+    },
+    onDelete: (song: Song) => void handleDeleteSong(song),
+    onToggleFavorite: (song: Song) => void handleToggleFavorite(song),
+  };
+
+  const searching = query.trim().length > 0 && view !== 'playlist';
+  const placeholder = view === 'playlist' ? 'Tìm trong playlist' : 'Tìm bài hát, ca sĩ…';
+
   return (
-    <main className="app-shell">
-      <aside className="app-sidebar">
-        <div className="app-logo">
-          <Mic2 size={24} />
-          <div>
-            <strong>Karaoke</strong>
-            <span>Playlist</span>
+    <div className={currentSong ? 'app has-player' : 'app'}>
+      <Sidebar
+        view={view}
+        playlists={playlists}
+        songs={songs}
+        activePlaylistId={activePlaylistId}
+        loading={loading}
+        onNavigate={go}
+        onCreatePlaylist={() => setIsCreatorOpen(true)}
+      />
+
+      <main className="main">
+        <TopBar query={query} onQueryChange={setQuery} placeholder={placeholder} onSignOut={() => void supabase.auth.signOut()} />
+
+        {searching ? (
+          <SearchResults
+            query={query}
+            playlists={playlists}
+            songs={songs}
+            matches={searchMatches}
+            onOpenPlaylist={(id) => go(`/playlist/${id}`)}
+            actions={songActions}
+          />
+        ) : view === 'home' ? (
+          <HomeView
+            playlists={playlists}
+            songs={songs}
+            loading={loading}
+            onOpenPlaylist={(id) => go(`/playlist/${id}`)}
+            onNavigate={go}
+            onCreatePlaylist={() => setIsCreatorOpen(true)}
+            onPlay={playSong}
+          />
+        ) : view === 'library' ? (
+          <LibraryView playlists={playlists} songs={songs} onOpenPlaylist={(id) => go(`/playlist/${id}`)} onCreatePlaylist={() => setIsCreatorOpen(true)} />
+        ) : view === 'favorites' ? (
+          <FavoritesView songs={songs} actions={songActions} />
+        ) : activePlaylist ? (
+          <PlaylistDetail
+            playlist={activePlaylist}
+            songs={playlistSongs}
+            visibleSongs={visibleSongs}
+            filter={filter}
+            onFilter={setFilter}
+            tags={tagTopics}
+            activeTag={tag}
+            onTag={setTag}
+            currentSongId={currentSong?.id ?? null}
+            loading={loading}
+            onPlayAll={() => playAll(false)}
+            onShuffle={() => playAll(true)}
+            onAddSong={() => {
+              setEditingSong(null);
+              setIsFormOpen(true);
+            }}
+            onShare={() => setIsShareOpen(true)}
+            onExport={handleExport}
+            onImport={() => fileInputRef.current?.click()}
+            onDeletePlaylist={() => void handleDeletePlaylist()}
+            onPlay={(song) => playSong(song, visibleSongs, isUnfiltered ? activePlaylist.id : undefined)}
+            onEdit={songActions.onEdit}
+            onDeleteSong={songActions.onDelete}
+            onToggleFavorite={songActions.onToggleFavorite}
+          />
+        ) : loading ? (
+          <PlaylistDetailSkeleton />
+        ) : (
+          <div className="empty">
+            <span className="empty-icon">
+              <Compass size={30} />
+            </span>
+            <h3>Không tìm thấy playlist</h3>
+            <p>Playlist này không tồn tại hoặc bạn chưa có quyền xem.</p>
+            <button className="btn btn-primary" type="button" onClick={() => go('/')} style={{ marginTop: 8 }}>
+              Về trang chủ
+            </button>
           </div>
+        )}
+      </main>
+
+      <input ref={fileInputRef} hidden type="file" accept="application/json" onChange={handleImport} />
+      {message && (
+        <div className="toast" role="status">
+          {message}
         </div>
-        <nav className="side-nav">
-          <button className={filter === 'all' ? 'active' : undefined} type="button" onClick={() => setFilter('all')}>
-            <Sparkles size={18} />
-            Khám phá
-          </button>
-          <button
-            className={filter === 'favorite' ? 'active' : undefined}
-            type="button"
-            onClick={() => setFilter('favorite')}
-          >
-            <Heart size={18} />
-            Yêu thích
-          </button>
-          <button
-            className={filter === 'with-youtube' ? 'active' : undefined}
-            type="button"
-            onClick={() => setFilter('with-youtube')}
-          >
-            <ListMusic size={18} />
-            Có thể phát
-          </button>
-        </nav>
+      )}
 
-        <section className="sidebar-section">
-          <div className="sidebar-section-title">Thư viện</div>
-          <p className="sidebar-note">
-            {playlists.length ? `${playlists.length} playlist - ${songs.length} bài hát` : 'Tạo playlist đầu tiên'}
-          </p>
-        </section>
-
-        <section className="sidebar-section">
-          <div className="sidebar-section-header">
-            <div>
-              <div className="sidebar-section-title">Danh sách phát</div>
-              <p>{playlists.length} danh sách</p>
-            </div>
-            <div className="sidebar-section-actions">
-              <button className="sidebar-icon-button" type="button" onClick={() => void loadPlaylists()} title="Tải lại">
-                <RefreshCw size={15} />
-              </button>
-              <button
-                className="sidebar-icon-button primary"
-                type="button"
-                onClick={() => setIsPlaylistCreatorOpen(true)}
-                title="Tạo danh sách"
-              >
-                <Plus size={15} />
-              </button>
-            </div>
-          </div>
-
-          <div className="playlist-list sidebar-playlist-list">
-            {loading ? (
-              <p className="muted">Đang tải playlist...</p>
-            ) : playlists.length ? (
-              playlists.map((playlist) => (
-                <button
-                  key={playlist.id}
-                  className={playlist.id === activePlaylistId ? 'playlist-item active' : 'playlist-item'}
-                  type="button"
-                  onClick={() => setActivePlaylistId(playlist.id)}
-                >
-                  <span>{playlist.name}</span>
-                  <small>{roleLabel(playlist.role)}</small>
-                </button>
-              ))
-            ) : (
-              <div className="empty-state small sidebar-empty-state">
-                <ListMusic size={24} />
-                <p>Chưa có danh sách.</p>
-              </div>
-            )}
-          </div>
-        </section>
-
-      </aside>
-
-      <section className="music-shell">
-        <header className="top-bar">
-          <label className="top-search">
-            <Search size={18} />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Bạn muốn hát bài gì?"
-            />
-          </label>
-          <button className="icon-button dark" type="button" onClick={() => supabase.auth.signOut()} title="Đăng xuất">
-            <LogOut size={19} />
-          </button>
-        </header>
-
-        {message && <div className="toast" role="status">{message}</div>}
-
-        <section className="topic-layout">
-          <section className="content-panel">
-            {activePlaylist ? (
-              <>
-                <div className="content-header">
-                  <div>
-                    <p className="eyebrow">Topics</p>
-                    <h1>{activePlaylist.name}</h1>
-                    <p>
-                      {songs.length} bài hát
-                      {activePlaylist.description ? ` - ${activePlaylist.description}` : ''}
-                    </p>
-                  </div>
-                  <div className="hero-actions">
-                    <span className="role-pill">{roleLabel(activePlaylist.role)}</span>
-                    {canEdit && (
-                      <button
-                        className="primary-button"
-                        type="button"
-                        onClick={() => {
-                          setEditingSong(null);
-                          setIsFormOpen(true);
-                        }}
-                      >
-                        <Plus size={18} />
-                        Thêm bài
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <section className="topic-section">
-                  <div className="section-heading">
-                    <div>
-                      <h2>Dành cho bạn</h2>
-                      <p>Lọc nhanh theo trạng thái bài hát.</p>
-                    </div>
-                  </div>
-                  <div className="topic-grid featured">
-                    <button
-                      className={filter === 'all' ? 'topic-card card-teal active' : 'topic-card card-teal'}
-                      type="button"
-                      onClick={() => setFilter('all')}
-                    >
-                      <span>Tất cả bài</span>
-                      <strong>{songs.length}</strong>
-                    </button>
-                    <button
-                      className={filter === 'favorite' ? 'topic-card card-rose active' : 'topic-card card-rose'}
-                      type="button"
-                      onClick={() => setFilter('favorite')}
-                    >
-                      <span>Yêu thích</span>
-                      <strong>{favoriteCount}</strong>
-                    </button>
-                    <button
-                      className={
-                        filter === 'with-youtube' ? 'topic-card card-cyan active' : 'topic-card card-cyan'
-                      }
-                      type="button"
-                      onClick={() => setFilter('with-youtube')}
-                    >
-                      <span>Có YouTube</span>
-                      <strong>{playableCount}</strong>
-                    </button>
-                    <button
-                      className={
-                        filter === 'missing-youtube' ? 'topic-card card-amber active' : 'topic-card card-amber'
-                      }
-                      type="button"
-                      onClick={() => setFilter('missing-youtube')}
-                    >
-                      <span>Thiếu link</span>
-                      <strong>{songs.length - playableCount}</strong>
-                    </button>
-                  </div>
-                </section>
-
-                <section className="topic-section">
-                  <div className="section-heading">
-                    <div>
-                      <h2>Thể loại</h2>
-                      <p>Nhóm từ tags trong playlist.</p>
-                    </div>
-                  </div>
-                  <div className="topic-grid">
-                    {tagTopics.length ? (
-                      tagTopics.map(([tag, count], index) => (
-                        <button
-                          className={`topic-card ${topicTone(index)}`}
-                          key={tag}
-                          type="button"
-                          onClick={() => {
-                            setFilter('all');
-                            setQuery(tag);
-                          }}
-                        >
-                          <span>{tag}</span>
-                          <strong>{count}</strong>
-                        </button>
-                      ))
-                    ) : (
-                      <div className="empty-strip">Thêm tags cho bài hát để tạo topic.</div>
-                    )}
-                  </div>
-                </section>
-
-                <section className="feature-section">
-                  <div className="section-heading">
-                    <div>
-                      <h2>Bài hát</h2>
-                      <p>Thêm bài, tìm kiếm và phát trực tiếp từ YouTube.</p>
-                    </div>
-                  </div>
-
-                  <SearchAndFilters
-                    query={query}
-                    filter={filter}
-                    onQueryChange={setQuery}
-                    onFilterChange={setFilter}
-                  />
-
-                  {songsLoading ? (
-                    <div className="empty-state">
-                      <p>Đang tải bài hát...</p>
-                    </div>
-                  ) : (
-                    <SongList
-                      songs={filteredSongs}
-                      canEdit={canEdit}
-                      onEdit={(song) => {
-                        setEditingSong(song);
-                        setIsFormOpen(true);
-                      }}
-                      onDelete={handleDeleteSong}
-                      onPlay={handlePlaySong}
-                    />
-                  )}
-                </section>
-
-                {isOwner && (
-                  <section className="feature-section compact-section">
-                    <div className="section-heading">
-                      <div>
-                        <h2>Chia sẻ</h2>
-                        <p>Tạo link mời cho người khác vào playlist.</p>
-                      </div>
-                    </div>
-                    <div className="invite-controls">
-                      <div className="role-segment" aria-label="Quyền link mời">
-                        <button
-                          className={inviteRole === 'viewer' ? 'active' : ''}
-                          type="button"
-                          onClick={() => setInviteRole('viewer')}
-                        >
-                          Viewer
-                        </button>
-                        <button
-                          className={inviteRole === 'editor' ? 'active' : ''}
-                          type="button"
-                          onClick={() => setInviteRole('editor')}
-                        >
-                          Editor
-                        </button>
-                      </div>
-                      <button className="ghost-button" type="button" onClick={handleCreateInvite}>
-                        <Share2 size={18} />
-                        Tạo link
-                      </button>
-                    </div>
-                    {inviteUrl && (
-                      <label className="copy-field">
-                        <Link2 size={17} />
-                        <input value={inviteUrl} readOnly onFocus={(event) => event.target.select()} />
-                      </label>
-                    )}
-                  </section>
-                )}
-
-                <section className="feature-section compact-section">
-                  <div className="section-heading">
-                    <div>
-                      <h2>Dữ liệu</h2>
-                      <p>Backup hoặc chuyển bài hát bằng file JSON.</p>
-                    </div>
-                  </div>
-                  <div className="data-actions">
-                    <button className="ghost-button" type="button" onClick={handleExport}>
-                      <Download size={18} />
-                      Export
-                    </button>
-                    {canEdit && (
-                      <>
-                        <button className="ghost-button" type="button" onClick={() => fileInputRef.current?.click()}>
-                          <Upload size={18} />
-                          Import
-                        </button>
-                        <input ref={fileInputRef} hidden type="file" accept="application/json" onChange={handleImport} />
-                      </>
-                    )}
-                    {isOwner && (
-                      <button className="danger-button" type="button" onClick={handleDeletePlaylist}>
-                        <Trash2 size={18} />
-                        Xóa playlist
-                      </button>
-                    )}
-                  </div>
-                </section>
-              </>
-            ) : (
-              <div className="empty-state">
-                <ListMusic size={34} />
-                <h3>Chưa có playlist</h3>
-                <p>Tạo playlist cá nhân hoặc mở link mời để bắt đầu lưu bài karaoke.</p>
-              </div>
-            )}
-          </section>
-        </section>
-      </section>
-
-      {isFormOpen && (
+      {isFormOpen && activePlaylist && (
         <SongForm
           song={editingSong}
-          existingSongs={songs}
+          existingSongs={songs.filter((song) => song.playlist_id === activePlaylist.id)}
           onCancel={() => {
             setEditingSong(null);
             setIsFormOpen(false);
@@ -629,58 +382,38 @@ export function PlaylistView({ inviteRedeemed }: { inviteRedeemed: string | null
           onSubmit={handleSaveSong}
         />
       )}
-      {isPlaylistCreatorOpen && (
-        <div className="modal-backdrop dimmed-backdrop" role="presentation">
-          <form className="playlist-modal" onSubmit={handleCreatePlaylist}>
-            <div className="playlist-modal-header">
-              <h2>Tạo playlist mới</h2>
-              <button className="modal-close-button" type="button" onClick={handleCancelCreatePlaylist} title="Đóng">
-                <X size={28} />
-              </button>
-            </div>
-
-            <label className="playlist-name-field">
-              <input
-                autoFocus
-                maxLength={100}
-                value={playlistName}
-                onChange={(event) => setPlaylistName(event.target.value)}
-                placeholder="Nhập tên playlist"
-                required
-              />
-              <span>{playlistName.length}/100</span>
-            </label>
-
-            <div className="playlist-modal-actions">
-              <button className="ghost-button pill-action" type="button" onClick={handleCancelCreatePlaylist}>
-                Hủy
-              </button>
-              <button className="primary-button pill-action" type="submit" disabled={!trimmedPlaylistName}>
-                Lưu
-              </button>
-            </div>
-          </form>
-        </div>
+      {isFormOpen && !activePlaylist && editingSong && (
+        <SongForm
+          song={editingSong}
+          existingSongs={songs.filter((song) => song.playlist_id === editingSong.playlist_id)}
+          onCancel={() => {
+            setEditingSong(null);
+            setIsFormOpen(false);
+          }}
+          onSubmit={async (input) => {
+            const updated = await updateSong(editingSong.id, input);
+            setSongs((current) => current.map((song) => (song.id === updated.id ? updated : song)));
+            setEditingSong(null);
+            setIsFormOpen(false);
+          }}
+        />
       )}
+      {isCreatorOpen && <CreatePlaylistDialog onCreate={handleCreatePlaylist} onClose={() => setIsCreatorOpen(false)} />}
+      {isShareOpen && activePlaylist && (
+        <ShareDialog playlist={activePlaylist} onClose={() => setIsShareOpen(false)} onMessage={setMessage} />
+      )}
+
       <PlayerBar
         song={currentSong}
         playRequestId={playRequestId}
-        canSkip={playableQueue.length > 1}
-        onPrevious={handlePreviousSong}
-        onNext={handleNextSong}
+        canSkip={queue.length > 1}
+        onPrevious={() => step(-1)}
+        onNext={(shuffle) => step(1, shuffle)}
         onClose={() => setCurrentSong(null)}
       />
-    </main>
+      <TabBar view={view} onNavigate={go} />
+    </div>
   );
-}
-
-function roleLabel(role: MemberRole) {
-  const labels: Record<MemberRole, string> = {
-    owner: 'Chủ playlist',
-    editor: 'Được sửa',
-    viewer: 'Chỉ xem',
-  };
-  return labels[role];
 }
 
 function readError(error: unknown, fallback: string) {
@@ -697,9 +430,4 @@ function normalizeImportedSong(song: SongInput): SongInput {
     note: song.note || '',
     favorite: Boolean(song.favorite),
   };
-}
-
-function topicTone(index: number) {
-  const tones = ['card-purple', 'card-blue', 'card-green', 'card-orange', 'card-pink', 'card-slate'];
-  return tones[index % tones.length];
 }
