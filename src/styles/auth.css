@@ -1,0 +1,107 @@
+/* Màn hình giữa trang: đăng nhập, vào phòng, thiếu cấu hình. Một kiểu thẻ cho tất cả. */
+
+.center-shell {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 24px 20px;
+}
+
+.center-card {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  width: min(100%, 420px);
+  padding: 36px 28px 28px;
+  border-radius: var(--radius-xl);
+  background: var(--glass);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(20px);
+  text-align: center;
+}
+
+.center-card h1 {
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+.center-card > p {
+  color: var(--muted);
+}
+
+.center-card form,
+.center-card .stack {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  margin-top: 6px;
+  text-align: left;
+}
+
+.center-card .segmented {
+  width: 100%;
+}
+
+.center-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--accent-grad);
+  color: var(--primary-ink);
+}
+
+.center-icon.is-warning {
+  background: linear-gradient(135deg, #ffb86b, #ff8a5c);
+}
+
+.center-icon::before,
+.center-icon::after {
+  position: absolute;
+  inset: 0;
+  border: 2px solid rgba(8, 212, 223, 0.45);
+  border-radius: 50%;
+  content: '';
+  animation: center-ring 2.4s ease-out infinite;
+}
+
+.center-icon.is-warning::before,
+.center-icon.is-warning::after {
+  border-color: rgba(255, 184, 107, 0.45);
+}
+
+.center-icon::after {
+  animation-delay: 1.2s;
+}
+
+.code-chip {
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: var(--glass-strong);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+@keyframes center-ring {
+  0% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .center-icon::before,
+  .center-icon::after {
+    animation: none;
+  }
+}

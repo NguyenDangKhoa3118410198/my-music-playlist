@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Mic2 } from 'lucide-react';
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { AuthScreen } from './components/AuthScreen';
+import { JoinPage } from './pages/JoinPage';
+import { RoomPage } from './pages/RoomPage';
 import { PlaylistView } from './components/PlaylistView';
 import {
   clearInviteTokenFromUrl,
@@ -10,7 +13,12 @@ import {
 } from './lib/inviteApi';
 import { getSupabaseSetupMessage, isSupabaseConfigured, supabase } from './lib/supabase';
 
-export default function App() {
+function RedirectToJoin() {
+  const { code = '' } = useParams();
+  return <Navigate to={`/join/${code}`} replace />;
+}
+
+function AppRoutes() {
   const [session, setSession] = useState<Session | null>(null);
   const [pendingInvite, setPendingInvite] = useState<string | null>(() => readInviteTokenFromUrl());
   const [redeemedPlaylistId, setRedeemedPlaylistId] = useState<string | null>(null);
@@ -65,13 +73,14 @@ export default function App() {
 
   if (!isSupabaseConfigured) {
     return (
-      <main className="auth-shell">
-        <section className="auth-panel setup-panel">
-          <div className="brand-mark warning">
+      <main className="center-shell">
+        <div className="room-ambient" aria-hidden="true" />
+        <section className="center-card">
+          <div className="center-icon is-warning">
             <AlertTriangle size={30} />
           </div>
           <h1>Cần cấu hình Supabase</h1>
-          <p className="muted">{getSupabaseSetupMessage()}</p>
+          <p>{getSupabaseSetupMessage()}</p>
           <code className="code-block">cp .env.example .env</code>
         </section>
       </main>
@@ -80,23 +89,46 @@ export default function App() {
 
   if (booting) {
     return (
-      <main className="auth-shell">
-        <section className="auth-panel">
-          <h1>Đang mở playlist...</h1>
-          <p className="muted">Đang kiểm tra phiên đăng nhập.</p>
-        </section>
+      <main className="center-shell" aria-busy="true">
+        <div className="room-ambient" aria-hidden="true" />
+        <div className="center-icon">
+          <Mic2 size={36} />
+        </div>
+        <span className="sr-only" role="status">
+          Đang tải
+        </span>
       </main>
     );
   }
 
-  if (!session) {
-    return <AuthScreen pendingInvite={pendingInvite} />;
-  }
-
   return (
-    <>
-      {message && <div className="global-error">{message}</div>}
-      <PlaylistView inviteRedeemed={redeemedPlaylistId} />
-    </>
+    <Routes>
+      <Route path="/join/:code" element={<JoinPage session={session} />} />
+      <Route
+        path="/room/:code"
+        element={session ? <RoomPage userId={session.user.id} /> : <RedirectToJoin />}
+      />
+      <Route
+        path="*"
+        element={
+          session ? (
+            <>
+              {message && <div className="global-error">{message}</div>}
+              <PlaylistView inviteRedeemed={redeemedPlaylistId} />
+            </>
+          ) : (
+            <AuthScreen pendingInvite={pendingInvite} />
+          )
+        }
+      />
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
+    </BrowserRouter>
   );
 }

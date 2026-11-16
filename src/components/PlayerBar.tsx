@@ -298,7 +298,7 @@ export function PlayerBar({
 
   return (
     <>
-      <footer className='player-bar'>
+      <footer className='player-bar' hidden={!song}>
         {hasAudioSession && videoId && (
           <div ref={audioHostRef} className='audio-embed' aria-hidden='true' />
         )}
@@ -320,7 +320,7 @@ export function PlayerBar({
           <div className='player-controls'>
             <button
               className={
-                isShuffle ? 'icon-button dark active' : 'icon-button dark'
+                isShuffle ? 'icon-btn is-active' : 'icon-btn'
               }
               type='button'
               disabled={!canPlay || !canSkip}
@@ -331,7 +331,7 @@ export function PlayerBar({
               <Shuffle size={18} />
             </button>
             <button
-              className='icon-button dark'
+              className='icon-btn'
               type='button'
               disabled={!canPlay || !canSkip}
               onClick={onPrevious}
@@ -340,7 +340,7 @@ export function PlayerBar({
               <SkipBack size={18} fill='currentColor' />
             </button>
             <button
-              className='icon-button dark'
+              className='icon-btn'
               type='button'
               disabled={!canPlay}
               onClick={() => handleSeek(currentTime - 10)}
@@ -349,7 +349,7 @@ export function PlayerBar({
               <Rewind size={18} />
             </button>
             <button
-              className='player-primary'
+              className='icon-btn icon-btn-lg is-primary'
               type='button'
               disabled={!canPlay}
               onClick={handleTogglePlay}
@@ -363,7 +363,7 @@ export function PlayerBar({
               )}
             </button>
             <button
-              className='icon-button dark'
+              className='icon-btn'
               type='button'
               disabled={!canPlay}
               onClick={() => handleSeek(currentTime + 10)}
@@ -372,7 +372,7 @@ export function PlayerBar({
               <FastForward size={18} />
             </button>
             <button
-              className='icon-button dark'
+              className='icon-btn'
               type='button'
               disabled={!canPlay || !canSkip}
               onClick={() => onNext(isShuffle)}
@@ -402,7 +402,7 @@ export function PlayerBar({
           {song?.youtube_url && (
             <>
               <button
-                className='icon-button dark'
+                className='icon-btn'
                 type='button'
                 onClick={handleOpenVideo}
                 title='Xem MV'
@@ -410,7 +410,7 @@ export function PlayerBar({
                 <Maximize2 size={18} />
               </button>
               <a
-                className='icon-button dark'
+                className='icon-btn'
                 href={song.youtube_url}
                 target='_blank'
                 rel='noreferrer'
@@ -422,7 +422,7 @@ export function PlayerBar({
           )}
           {song && (
             <button
-              className='icon-button dark'
+              className='icon-btn'
               type='button'
               onClick={handleClosePlayer}
               title='Đóng player'
@@ -443,7 +443,7 @@ export function PlayerBar({
               </div>
               <div className='video-actions'>
                 <a
-                  className='icon-button dark'
+                  className='icon-btn'
                   href={song.youtube_url || '#'}
                   target='_blank'
                   rel='noreferrer'
@@ -452,7 +452,7 @@ export function PlayerBar({
                   <ExternalLink size={18} />
                 </a>
                 <button
-                  className='icon-button dark'
+                  className='icon-btn'
                   type='button'
                   onClick={() => setIsVideoOpen(false)}
                   title='Đóng video'
