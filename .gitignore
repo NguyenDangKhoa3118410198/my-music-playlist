@@ -2,8 +2,11 @@ node_modules
 dist
 .env*
 !.env.example
-supabase/
 .supabase/
 .superbase/
 .DS_Store
 *.tsbuildinfo
+
+# Playwright
+e2e/.results/
+playwright-report/
