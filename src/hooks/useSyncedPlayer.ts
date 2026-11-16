@@ -9,6 +9,8 @@ const PROGRESS_TICK_MS = 500;
 const PAUSE_GUARD_MS = 700;
 // Sau khi tua/tải bài, getCurrentTime chưa đáng tin (đang buffer): tạm không sửa lệch.
 const SETTLE_MS = 3000;
+// Sau khi player báo lỗi, chờ chừng này rồi mới kết luận (xem comment ở onError).
+const ERROR_CONFIRM_MS = 1200;
 
 type Args = {
   containerRef: RefObject<HTMLDivElement | null>;
@@ -18,6 +20,8 @@ type Args = {
   current: RoomQueueItem | null;
   // Chỉ phát sau khi người dùng bấm "Tham gia nghe" (trình duyệt chặn autoplay).
   joined: boolean;
+  // Tắt tiếng cá nhân: chỉ ảnh hưởng máy này, không gửi lên phòng.
+  muted: boolean;
   onEnded: (queueId: string) => void;
   onError: (queueId: string, code: number) => void;
 };
@@ -30,7 +34,7 @@ export function toAnchor(state: RoomState): PlaybackAnchor {
   };
 }
 
-export function useSyncedPlayer({ containerRef, enabled, state, current, joined, onEnded, onError }: Args) {
+export function useSyncedPlayer({ containerRef, enabled, state, current, joined, muted, onEnded, onError }: Args) {
   const playerRef = useRef<RoomPlayer | null>(null);
   const loadedQueueIdRef = useRef<string | null>(null);
   const settleUntilRef = useRef(0);
@@ -56,7 +60,25 @@ export function useSyncedPlayer({ containerRef, enabled, state, current, joined,
       },
       onError: (code) => {
         const id = loadedQueueIdRef.current;
-        if (id) callbacksRef.current.onError(id, code);
+        if (!id) return;
+
+        // Sự kiện lỗi có thể đến MUỘN: lỗi của bài trước đến sau khi bài kế đã được tải (ví dụ máy khác đã
+        // bỏ qua bài lỗi, ta nhận cập nhật rồi tải bài mới, rồi mới nhận lỗi cũ). Nếu bỏ qua ngay thì bài kế
+        // đang phát tốt cũng bị gán lỗi và bỏ qua, cứ thế xoá dây chuyền cả hàng đợi.
+        // Nên chờ một chút rồi xác nhận: vẫn đúng bài đó VÀ player thực sự không phát (chưa bắt đầu/đã cue).
+        window.setTimeout(() => {
+          const player = playerRef.current;
+          if (!player || loadedQueueIdRef.current !== id) return; // đã chuyển bài, lỗi này là của bài cũ
+          const playerState = player.getState();
+          if (
+            playerState === YT_STATE.PLAYING ||
+            playerState === YT_STATE.BUFFERING ||
+            playerState === YT_STATE.PAUSED
+          ) {
+            return; // bài hiện tại đang phát được, lỗi này là của video trước
+          }
+          callbacksRef.current.onError(id, code);
+        }, ERROR_CONFIRM_MS);
       },
     }).then((player) => {
       if (disposed) {
@@ -113,6 +135,15 @@ export function useSyncedPlayer({ containerRef, enabled, state, current, joined,
       player.pause();
     }
   }, [ready, joined, state, current]);
+
+  // Tắt tiếng cá nhân. PHẢI khai báo sau effect tải video ở trên: effect chạy theo thứ tự khai báo, nên
+  // mỗi lần đổi bài nó áp lại trạng thái sau khi video mới được tải (player có thể đặt lại âm lượng).
+  // mute()/unMute() lặp lại vô hại nên gọi vô điều kiện, không dựa vào isMuted() vốn có thể trả giá trị cũ.
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player || !ready) return;
+    player.setMuted(muted);
+  }, [ready, muted, joined, current?.id, state?.version]);
 
   // Đang tạm dừng mà player vẫn phát (lệnh dừng bị bỏ qua lúc buffer, hoặc ai đó bấm vào video) thì dừng lại.
   useEffect(() => {

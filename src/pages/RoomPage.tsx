@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, Headphones, Link2, ListMusic, Music2, Pause, Play, SkipForward, Users } from 'lucide-react';
+import { ArrowLeft, Check, Headphones, Link2, ListMusic, Music2, Pause, Play, SkipForward, Users, Volume2, VolumeX } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AddLinkBar, type NewVideo } from '../components/room/AddLinkBar';
 import { Spinner } from '../components/ui/Spinner';
@@ -42,6 +42,8 @@ export function RoomPage({ userId }: { userId: string }) {
   const [tab, setTab] = useState<'queue' | 'members'>('queue');
   const [message, setMessage] = useState('');
   const [copied, setCopied] = useState(false);
+  // Tắt tiếng chỉ cho riêng máy này, tạm thời: không lưu lại, tải lại trang là bật tiếng như mặc định.
+  const [muted, setMuted] = useState(false);
   const [seeking, setSeeking] = useState<number | null>(null);
   const draggingRef = useRef(false);
   const seekDeadlineRef = useRef(0);
@@ -106,10 +108,11 @@ export function RoomPage({ userId }: { userId: string }) {
   const handleError = useCallback(
     (queueId: string, errorCode: number) => {
       if (!room) return;
-      setMessage(`${describeYoutubeError(errorCode)}, đã bỏ qua bài này.`);
+      const title = queue.find((item) => item.id === queueId)?.title;
+      setMessage(`${describeYoutubeError(errorCode)}${title ? ` (“${title}”)` : ''}, đã bỏ qua bài này.`);
       void nextInRoom(room.id, queueId, 'unplayable').then(applyState).catch(() => undefined);
     },
-    [room, applyState],
+    [room, applyState, queue],
   );
 
   const { ready, progress } = useSyncedPlayer({
@@ -118,9 +121,22 @@ export function RoomPage({ userId }: { userId: string }) {
     state,
     current,
     joined,
+    muted,
     onEnded: handleEnded,
     onError: handleError,
   });
+
+  // Phím tắt M: bật/tắt tiếng (không kích hoạt khi đang gõ vào ô nhập).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'm' || event.ctrlKey || event.metaKey || event.altKey) return;
+      if ((event.target as HTMLElement | null)?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      event.preventDefault();
+      setMuted((current) => !current);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   // Thả vị trí tạm khi player đã tới nơi, hoặc quá hạn.
   useEffect(() => {
@@ -174,6 +190,7 @@ export function RoomPage({ userId }: { userId: string }) {
   async function handleAdd(video: NewVideo) {
     if (!room) return;
     await addToQueue(room.id, video);
+    setMessage(`Đã thêm “${video.title}” vào hàng đợi`);
   }
 
   function handleRemove(item: RoomQueueItem) {
@@ -282,6 +299,11 @@ export function RoomPage({ userId }: { userId: string }) {
                 }
               />
             )}
+            {joined && muted && (
+              <button className="room-muted-chip" type="button" onClick={() => setMuted(false)}>
+                <VolumeX size={16} /> Đang tắt tiếng · bấm để bật
+              </button>
+            )}
             {joined && !current && (
               <div className="room-video-overlay">
                 <span className="room-empty-icon">
@@ -334,6 +356,16 @@ export function RoomPage({ userId }: { userId: string }) {
                 aria-label="Tua bài hát"
               />
               <span>{formatTime(progress.duration)}</span>
+              <button
+                className={muted ? 'icon-btn is-active' : 'icon-btn'}
+                type="button"
+                aria-pressed={muted}
+                aria-label={muted ? 'Bật tiếng' : 'Tắt tiếng'}
+                title={muted ? 'Bật tiếng (M)' : 'Tắt tiếng trên máy này (M)'}
+                onClick={() => setMuted((current) => !current)}
+              >
+                {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+              </button>
             </div>
 
             {canControl ? (

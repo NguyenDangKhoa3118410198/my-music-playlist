@@ -168,6 +168,17 @@ export function errorMessage(error: unknown) {
   return 'Có lỗi xảy ra.';
 }
 
+// Mã phòng do SQL sinh ra: 6 ký tự, bỏ I, O, 0, 1 cho dễ đọc (xem gen_room_code trong rooms.sql).
+const ROOM_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/;
+
+export function normalizeRoomCode(code: string) {
+  return code.trim().toUpperCase();
+}
+
+export function isValidRoomCode(code: string) {
+  return ROOM_CODE_PATTERN.test(normalizeRoomCode(code));
+}
+
 export function buildRoomUrl(code: string) {
   return `${window.location.origin}/join/${code}`;
 }

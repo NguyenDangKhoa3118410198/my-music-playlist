@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
+import { errorMessage } from '../../lib/roomApi';
 import {
   getYoutubeThumbnailUrl,
   getYoutubeVideoId,
@@ -51,7 +52,7 @@ export function AddLinkBar({ onAdd }: { onAdd: (video: NewVideo) => Promise<void
       await onAdd({ videoId, url: trimmed, title, thumbnail });
       setUrl('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Không thêm được bài.');
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -60,9 +61,16 @@ export function AddLinkBar({ onAdd }: { onAdd: (video: NewVideo) => Promise<void
   return (
     <form className="room-add" onSubmit={handleSubmit}>
       {videoId && (
-        <div className="room-add-preview">
+        <div className="room-add-preview" aria-label="Xem trước bài sắp thêm">
           {thumbnail && <img src={thumbnail} alt="" />}
-          {previewTitle ? <span>{previewTitle}</span> : <span className="sk sk-inline" aria-label="Đang lấy tiêu đề" />}
+          <div className="room-add-preview-text">
+            <span className="room-add-preview-label">Xem trước · chưa thêm vào hàng đợi</span>
+            {previewTitle ? (
+              <span className="room-add-preview-title">{previewTitle}</span>
+            ) : (
+              <span className="sk sk-inline" aria-label="Đang lấy tiêu đề" />
+            )}
+          </div>
         </div>
       )}
       {error && <p className="room-add-error">{error}</p>}

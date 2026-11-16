@@ -314,7 +314,7 @@
 .room-progress {
   display: grid;
   grid-area: progress;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr auto auto;
   align-items: center;
   gap: 12px;
   color: var(--muted);
@@ -587,6 +587,15 @@
   box-shadow: none;
 }
 
+/* Focus hiện ở cả thanh hình viên thuốc, không phải ở ô nhập bên trong */
+.room-add-row {
+  transition: box-shadow 0.2s;
+}
+
+.room-add-row:focus-within {
+  box-shadow: 0 0 0 2px rgba(8, 212, 223, 0.6);
+}
+
 .room-add-btn {
   display: grid;
   flex: none;
@@ -605,14 +614,37 @@
   cursor: not-allowed;
 }
 
+/* Khung xem trước: nét đứt + nhãn "chưa thêm" để không nhầm với một dòng trong hàng đợi */
 .room-add-preview {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 8px 12px 8px 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.28);
   border-radius: 16px;
-  background: var(--glass);
+  background: transparent;
   font-size: 0.9rem;
+}
+
+.room-add-preview-text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.room-add-preview-label {
+  color: var(--amber);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.room-add-preview-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .room-add-preview img {
@@ -792,4 +824,28 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Nhắc người dùng đang tắt tiếng (chỉ máy này): nằm trên video, bấm vào để bật lại */
+.room-muted-chip {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(7, 19, 16, 0.72);
+  backdrop-filter: blur(10px);
+  color: var(--amber);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.room-muted-chip:hover {
+  background: rgba(7, 19, 16, 0.9);
 }

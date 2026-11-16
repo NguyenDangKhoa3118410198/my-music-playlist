@@ -77,9 +77,16 @@ button {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Vòng focus cho nút, liên kết... Ô nhập văn bản có kiểu focus riêng nên không dùng outline (tránh hai vòng chồng nhau). */
 :focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
+}
+
+input:not([type='range']):not([type='checkbox']):not([type='radio']):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
 }
 
 ::selection {

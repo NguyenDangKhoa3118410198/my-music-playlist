@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from 'react';
 import { Radio } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { createRoom, errorMessage } from '../../lib/roomApi';
+import { createRoom, errorMessage, isValidRoomCode, normalizeRoomCode } from '../../lib/roomApi';
 import type { RoomControlMode } from '../../types';
 import { Dialog } from '../ui/Dialog';
 import { Spinner } from '../ui/Spinner';
@@ -42,8 +42,7 @@ export function RoomLauncher({ renderTrigger }: Props) {
 
   function handleJoin(event: React.FormEvent) {
     event.preventDefault();
-    const cleaned = code.trim().toUpperCase();
-    if (cleaned) navigate(`/join/${cleaned}`);
+    if (isValidRoomCode(code)) navigate(`/join/${normalizeRoomCode(code)}`);
   }
 
   return (
@@ -69,7 +68,7 @@ export function RoomLauncher({ renderTrigger }: Props) {
                 Tạo phòng
               </button>
             ) : (
-              <button className="btn btn-primary btn-block" type="submit" disabled={!code.trim()}>
+              <button className="btn btn-primary btn-block" type="submit" disabled={!isValidRoomCode(code)}>
                 Vào phòng
               </button>
             )
@@ -101,7 +100,8 @@ export function RoomLauncher({ renderTrigger }: Props) {
           ) : (
             <label>
               Mã phòng
-              <input value={code} onChange={(e) => setCode(e.target.value)} maxLength={6} required placeholder="K7Q2MX" autoFocus />
+              <input value={code} onChange={(e) => setCode(e.target.value)} maxLength={6} required placeholder="K7Q2MX" autoFocus autoCapitalize="characters" spellCheck={false} />
+              <span className="form-helper">Mã gồm 6 ký tự chữ và số, ví dụ K7Q2MX.</span>
             </label>
           )}
 

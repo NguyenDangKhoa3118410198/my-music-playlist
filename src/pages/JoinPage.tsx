@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { Radio } from 'lucide-react';
+import { Radio, SearchX } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AuthScreen } from '../components/AuthScreen';
 import { Spinner } from '../components/ui/Spinner';
-import { errorMessage, joinRoom } from '../lib/roomApi';
+import { errorMessage, isValidRoomCode, joinRoom, normalizeRoomCode } from '../lib/roomApi';
 import { supabase } from '../lib/supabase';
 
 export function JoinPage({ session }: { session: Session | null }) {
-  const { code = '' } = useParams();
+  const { code: rawCode = '' } = useParams();
+  const code = normalizeRoomCode(rawCode);
+  const valid = isValidRoomCode(code);
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [useAccount, setUseAccount] = useState(false);
@@ -17,12 +19,12 @@ export function JoinPage({ session }: { session: Session | null }) {
 
   // Đã có phiên đăng nhập (tài khoản hoặc ẩn danh) thì vào phòng ngay.
   useEffect(() => {
-    if (!session) return undefined;
+    if (!session || !valid) return undefined;
 
     let cancelled = false;
     joinRoom(code)
       .then(() => {
-        if (!cancelled) navigate(`/room/${code.toUpperCase()}`, { replace: true });
+        if (!cancelled) navigate(`/room/${code}`, { replace: true });
       })
       .catch((e) => {
         if (!cancelled) setError(errorMessage(e));
@@ -31,7 +33,7 @@ export function JoinPage({ session }: { session: Session | null }) {
     return () => {
       cancelled = true;
     };
-  }, [session, code, navigate]);
+  }, [session, code, valid, navigate]);
 
   async function handleGuest(event: React.FormEvent) {
     event.preventDefault();
@@ -51,6 +53,26 @@ export function JoinPage({ session }: { session: Session | null }) {
     }
   }
 
+  // Mã sai định dạng thì báo ngay, không bắt nhập tên hay đăng nhập ẩn danh vô ích.
+  if (!valid) {
+    return (
+      <main className="center-shell">
+        <div className="room-ambient" aria-hidden="true" />
+        <section className="center-card">
+          <div className="center-icon is-warning">
+            <SearchX size={36} />
+          </div>
+          <h1>Mã phòng không hợp lệ</h1>
+          {code && <span className="code-chip">{code.slice(0, 12)}</span>}
+          <p>Mã phòng gồm 6 ký tự chữ và số, ví dụ K7Q2MX. Kiểm tra lại link hoặc mã bạn nhận được.</p>
+          <Link className="btn btn-primary btn-lg btn-block" to="/">
+            Về trang chủ
+          </Link>
+        </section>
+      </main>
+    );
+  }
+
   if (!session && useAccount) return <AuthScreen pendingInvite={null} />;
 
   return (
@@ -61,8 +83,8 @@ export function JoinPage({ session }: { session: Session | null }) {
           <Radio size={36} />
         </div>
         <h1>Nghe nhạc cùng nhau</h1>
-        <span className="code-chip" aria-label={`Mã phòng ${code.toUpperCase()}`}>
-          {code.toUpperCase()}
+        <span className="code-chip" aria-label={`Mã phòng ${code}`}>
+          {code}
         </span>
 
         {session ? (

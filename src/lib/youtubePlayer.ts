@@ -11,6 +11,9 @@ type YTPlayerInstance = {
   playVideo: () => void;
   seekTo: (seconds: number, allowSeekAhead: boolean) => void;
   stopVideo: () => void;
+  mute: () => void;
+  unMute: () => void;
+  isMuted: () => boolean;
 };
 
 type YTNamespace = {
@@ -76,6 +79,9 @@ export type RoomPlayer = {
   getTime: () => number;
   getDuration: () => number;
   getState: () => number;
+  /** Tắt/bật tiếng chỉ trên máy này (không liên quan tới trạng thái phòng). */
+  setMuted: (muted: boolean) => void;
+  isMuted: () => boolean;
   destroy: () => void;
 };
 
@@ -128,6 +134,8 @@ export async function createRoomPlayer(container: HTMLElement, handlers: Handler
     seek: (sec) => player.seekTo(sec, true),
     getTime: () => player.getCurrentTime() || 0,
     getDuration: () => player.getDuration() || 0,
+    setMuted: (muted) => (muted ? player.mute() : player.unMute()),
+    isMuted: () => player.isMuted(),
     getState: () => player.getPlayerState(),
     destroy: () => {
       player.destroy();

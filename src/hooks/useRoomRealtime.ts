@@ -99,7 +99,8 @@ export function useRoomRealtime(roomId: string | null, userId: string) {
       if (document.visibilityState === 'visible') void loadAll();
     };
     document.addEventListener('visibilitychange', onVisible);
-    const poll = window.setInterval(() => void refreshState(), POLL_INTERVAL_MS);
+    // Dự phòng khi Realtime rớt gói hoặc mất kết nối: định kỳ tải lại cả trạng thái, hàng đợi và thành viên.
+    const poll = window.setInterval(() => void loadAll(), POLL_INTERVAL_MS);
 
     return () => {
       aliveRef.current = false;
