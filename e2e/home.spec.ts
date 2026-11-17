@@ -389,8 +389,10 @@ test.describe('trang chủ và playlist', () => {
     // Thêm bài thứ ba SAU khi đã bắt đầu phát (có link YouTube nên phát được).
     await page.getByRole('button', { name: 'Thêm bài', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Thêm bài hát' });
-    await dialog.getByRole('textbox', { name: 'Link YouTube' }).fill('https://youtu.be/dQw4w9WgXcQ');
+    // Điền tên trước rồi mới dán link: form chỉ tự lấy tên từ YouTube khi ô tên còn trống, nên kết quả không
+    // phụ thuộc việc phản hồi từ YouTube đến sớm hay muộn (nếu đảo thứ tự, tên có thể bị chen/dính vào nhau).
     await dialog.getByRole('textbox', { name: 'Tên bài hát' }).fill('Bài mới thứ ba');
+    await dialog.getByRole('textbox', { name: 'Link YouTube' }).fill('https://youtu.be/dQw4w9WgXcQ');
     await dialog.getByRole('button', { name: 'Lưu' }).click();
     await expect(dialog).toHaveCount(0);
 
@@ -398,7 +400,9 @@ test.describe('trang chủ và playlist', () => {
     const next = page.locator('.player-bar').getByRole('button', { name: /Bài (ngẫu nhiên )?tiếp theo/ });
     const seen = new Set<string>();
     for (let i = 0; i < 6; i += 1) {
+      const before = (await title.textContent())!;
       await next.click();
+      await expect(title).not.toHaveText(before); // đợi thanh phát đổi bài rồi mới ghi nhận, tránh đọc nhầm bài cũ
       seen.add((await title.textContent())!);
     }
     expect([...seen].sort(), 'bấm bài tiếp phải đi qua cả 3 bài').toEqual(['Bài cũ hai', 'Bài cũ một', 'Bài mới thứ ba']);
@@ -414,7 +418,9 @@ test.describe('trang chủ và playlist', () => {
     await page.locator('.player-bar').getByRole('button', { name: 'Phát ngẫu nhiên' }).click();
     const shuffled = new Set<string>();
     for (let i = 0; i < 12; i += 1) {
+      const before = (await title.textContent())!;
       await next.click();
+      await expect(title).not.toHaveText(before); // ngẫu nhiên luôn chọn bài khác bài hiện tại
       shuffled.add((await title.textContent())!);
     }
     expect(shuffled.has('Bài mới thứ ba'), `ngẫu nhiên đã phát: ${[...shuffled]}`).toBe(true);
