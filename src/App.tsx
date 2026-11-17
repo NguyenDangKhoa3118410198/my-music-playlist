@@ -11,7 +11,7 @@ import {
   readInviteTokenFromUrl,
   redeemInvite,
 } from './lib/inviteApi';
-import { getSupabaseSetupMessage, isSupabaseConfigured, supabase } from './lib/supabase';
+import { getSupabaseSetupMessage, isSupabaseConfigured, supabase, supabaseConfigProblems } from './lib/supabase';
 
 function RedirectToJoin() {
   const { code = '' } = useParams();
@@ -79,9 +79,27 @@ function AppRoutes() {
           <div className="center-icon is-warning">
             <AlertTriangle size={30} />
           </div>
-          <h1>Cần cấu hình Supabase</h1>
-          <p>{getSupabaseSetupMessage()}</p>
-          <code className="code-block">cp .env.example .env</code>
+          {import.meta.env.DEV ? (
+            <>
+              <h1>Cần cấu hình Supabase</h1>
+              <p>{getSupabaseSetupMessage()}</p>
+              <ul className="problem-list">
+                {supabaseConfigProblems.map((problem) => (
+                  <li key={problem}>{problem}</li>
+                ))}
+              </ul>
+              <code className="code-block">cp .env.example .env</code>
+            </>
+          ) : (
+            // Bản build thật đã được kiểm tra lúc build nên hiếm khi tới đây; nếu tới thì chỉ báo thân thiện, không lộ chi tiết kỹ thuật.
+            <>
+              <h1>Đang cập nhật ứng dụng</h1>
+              <p>Ứng dụng tạm thời chưa sẵn sàng. Bạn vui lòng tải lại trang sau ít phút.</p>
+              <button className="btn btn-primary btn-lg btn-block" type="button" onClick={() => window.location.reload()}>
+                Tải lại trang
+              </button>
+            </>
+          )}
         </section>
       </main>
     );

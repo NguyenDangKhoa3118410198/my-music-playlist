@@ -33,3 +33,11 @@ Tham khảo nhaccuatui.com. Không dùng thẻ thống kê màu, khối "Dữ li
   chạy cổng 5188, không đụng Supabase thật).
 - Mỗi lỗi giao diện đã gặp có test chặn lại; sửa lỗi xong thì thêm test, và thử cố ý gây lại lỗi để chắc test đỏ.
 - Xem bằng mắt: `SHOT_DIR=e2e/.results/after npm run e2e -- e2e/screenshots.spec.ts`.
+
+## Cấu hình và deploy
+
+- `vite.config.ts` **làm build thất bại** nếu `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` thiếu hoặc sai
+  (logic ở `src/lib/supabaseEnv.ts`, có test). Mục đích: Vercel không bao giờ đưa bản thiếu cấu hình lên chạy.
+  Đừng bỏ kiểm tra này; chỉ dùng `SKIP_ENV_CHECK=1` khi cố ý build không có backend.
+- Chỉ dùng khoá công khai (publishable/anon) trong biến `VITE_*`: mọi biến `VITE_*` đều lộ ra trình duyệt.
+

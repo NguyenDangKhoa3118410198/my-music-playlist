@@ -105,3 +105,17 @@
     animation: none;
   }
 }
+
+/* Danh sách vấn đề cấu hình (chỉ hiện khi chạy dev) */
+.problem-list {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 12px 16px 12px 32px;
+  border-radius: var(--radius-md);
+  background: var(--glass);
+  color: var(--amber);
+  font-size: 0.88rem;
+  text-align: left;
+}
