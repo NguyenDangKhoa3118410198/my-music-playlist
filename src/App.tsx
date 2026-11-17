@@ -124,7 +124,7 @@ function AppRoutes() {
       <Route path="/join/:code" element={<JoinPage session={session} />} />
       <Route
         path="/room/:code"
-        element={session ? <RoomPage userId={session.user.id} /> : <RedirectToJoin />}
+        element={session ? <RoomPage userId={session.user.id} isAnonymous={Boolean(session.user.is_anonymous)} /> : <RedirectToJoin />}
       />
       <Route
         path="*"

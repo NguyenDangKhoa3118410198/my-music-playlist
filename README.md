@@ -9,6 +9,10 @@ Web app mobile-first để lưu bài hát karaoke, nghe nhạc từ YouTube và 
 - Mời người khác vào playlist bằng link với quyền `editor` hoặc `viewer`; nhập/xuất JSON theo playlist.
 - **Phòng nghe chung:** tạo phòng, mời bằng mã/link (khách vào bằng đăng nhập ẩn danh), hàng đợi chung,
   phát/tạm dừng/tua đồng bộ giữa mọi người, vai trò chủ phòng/DJ/người nghe, tắt tiếng riêng trên máy mình.
+  - **Đã phát:** lịch sử các bài đã phát hoặc bị bỏ qua (kèm lý do), bấm để thêm lại vào hàng đợi.
+  - **Thêm playlist vào phòng**, hoặc bấm "Nghe cùng bạn bè" ở trang playlist để tạo phòng nạp sẵn playlist đó.
+  - **Vòng đời phòng:** rời phòng, đóng phòng (chủ phòng), "Phòng gần đây" ở trang chủ. Phòng bỏ hoang tự tạm
+    dừng tại chỗ người cuối cùng nghe tới, và tự đóng sau 7 ngày không ai dùng (xoá hẳn sau 30 ngày kể từ lúc đóng).
 
 ## Cấu hình Supabase
 
@@ -16,6 +20,10 @@ Web app mobile-first để lưu bài hát karaoke, nghe nhạc từ YouTube và 
 2. Chạy SQL trong **SQL Editor**:
    - **Project mới:** chạy `supabase/schema.sql`, rồi `supabase/rooms.sql`.
    - **Project đã có sẵn bảng playlist:** chỉ chạy `supabase/rooms.sql` (không chạy `schema.sql`).
+   - `rooms.sql` chạy lại nhiều lần được. **Khi cập nhật app lên bản mới, hãy chạy lại `rooms.sql`** để có các hàm mới
+     (lịch sử, thêm hàng loạt, nhịp tim, rời/đóng phòng).
+   - Tuỳ chọn: bật **pg_cron** (Database -> Extensions) rồi chạy lại `rooms.sql` để tự dọn phòng cũ mỗi ngày. Không bật
+     thì mọi thứ vẫn chạy, chỉ là phòng không dùng sẽ nằm lại trong database.
 3. **Authentication → Sign In / Providers:** bật **Allow anonymous sign-ins** (để khách vào phòng không cần tài khoản).
 4. Lấy **Project URL** (`https://xxxx.supabase.co`, không có `/rest/v1`) và **publishable key** (`sb_publishable_...`)
    ở Project Settings → API Keys. **Tuyệt đối không dùng secret key / `service_role`** trong app này.
@@ -33,6 +41,7 @@ npm run dev
 ```bash
 npm test          # test hàm thuần (đồng bộ phát, kiểm tra cấu hình)
 npm run e2e       # Playwright: dùng Chrome có sẵn, backend Supabase và YouTube giả, cổng 5188
+npm run test:sql  # test SQL trên Postgres thật trong Docker (cần Docker; kéo image postgres:16-alpine lần đầu)
 ```
 
 Test e2e không chạm Supabase thật nên chạy được mà không cần `.env`.

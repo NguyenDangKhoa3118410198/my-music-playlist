@@ -849,3 +849,101 @@
 .room-muted-chip:hover {
   background: rgba(7, 19, 16, 0.9);
 }
+
+/* --- Tab "Đã phát", nhập playlist vào phòng --- */
+.room-tabs {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.room-item.history {
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+}
+
+.room-item-text small.is-warn {
+  color: var(--amber);
+}
+
+.room-import-btn {
+  align-self: flex-start;
+}
+
+.import-list {
+  display: grid;
+  gap: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.import-item {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--glass);
+  color: inherit;
+  text-align: left;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
+}
+
+.import-item:hover:not(:disabled) {
+  background: var(--glass-hover);
+}
+
+.import-item.is-selected {
+  border-color: var(--primary);
+  background: rgba(8, 212, 223, 0.12);
+}
+
+.import-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.import-item .cover {
+  width: 44px;
+}
+
+.import-item strong,
+.import-item small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-item small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.check-row input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+}
+
+@media (max-width: 480px) {
+  .room-tabs button {
+    gap: 4px;
+    padding: 0 4px;
+    font-size: 0.82rem;
+  }
+
+  .room-tabs button svg {
+    display: none;
+  }
+}

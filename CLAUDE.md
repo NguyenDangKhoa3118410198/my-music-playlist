@@ -40,4 +40,7 @@ Tham khảo nhaccuatui.com. Không dùng thẻ thống kê màu, khối "Dữ li
   (logic ở `src/lib/supabaseEnv.ts`, có test). Mục đích: Vercel không bao giờ đưa bản thiếu cấu hình lên chạy.
   Đừng bỏ kiểm tra này; chỉ dùng `SKIP_ENV_CHECK=1` khi cố ý build không có backend.
 - Chỉ dùng khoá công khai (publishable/anon) trong biến `VITE_*`: mọi biến `VITE_*` đều lộ ra trình duyệt.
+- `npm run test:sql` (cần Docker) chạy `supabase/tests/`: áp `schema.sql` + `rooms.sql` hai lần (kiểm tra chạy lại được) rồi
+  chạy kịch bản trong `rooms.test.sql` (quyền, hàng đợi, lịch sử, nhịp tim, rời/đóng phòng, dọn phòng). Sửa SQL của phòng
+  thì thêm kịch bản vào đó và thử phá SQL để chắc test đỏ. Mock backend ở `e2e/support/mockBackend.ts` phải khớp hành vi SQL.
 

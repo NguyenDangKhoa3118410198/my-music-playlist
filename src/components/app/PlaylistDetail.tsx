@@ -1,8 +1,9 @@
-import { Download, MoreHorizontal, Music2, Play, Plus, Share2, Shuffle, Trash2, Upload } from 'lucide-react';
+import { Download, MoreHorizontal, Music2, Play, Plus, Radio, Share2, Shuffle, Trash2, Upload } from 'lucide-react';
 import type { FilterMode, MemberRole, PlaylistWithRole, Song } from '../../types';
 import { Cover } from '../ui/Cover';
 import { Menu } from '../ui/Menu';
 import { SongRowSkeletons } from '../ui/Skeletons';
+import { Spinner } from '../ui/Spinner';
 import { SongRow } from './SongRow';
 
 const ROLE_LABEL: Record<MemberRole, string> = { owner: 'Chủ playlist', editor: 'Được sửa', viewer: 'Chỉ xem' };
@@ -29,6 +30,8 @@ type Props = {
   onShuffle: () => void;
   onAddSong: () => void;
   onShare: () => void;
+  onListenTogether: () => void;
+  listenBusy: boolean;
   onExport: () => void;
   onImport: () => void;
   onDeletePlaylist: () => void;
@@ -71,6 +74,9 @@ export function PlaylistDetail(props: Props) {
             <Plus size={19} /> Thêm bài
           </button>
         )}
+        <button className="btn btn-lg" type="button" onClick={props.onListenTogether} disabled={!playable || props.listenBusy}>
+          {props.listenBusy ? <Spinner size={19} /> : <Radio size={19} />} Nghe cùng bạn bè
+        </button>
         {isOwner && (
           <button className="icon-btn icon-btn-lg" type="button" aria-label="Chia sẻ playlist" onClick={props.onShare}>
             <Share2 size={20} />

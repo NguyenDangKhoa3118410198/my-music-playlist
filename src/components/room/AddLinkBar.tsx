@@ -9,7 +9,7 @@ import {
 
 export type NewVideo = { videoId: string; url: string; title: string; thumbnail: string | null };
 
-export function AddLinkBar({ onAdd }: { onAdd: (video: NewVideo) => Promise<void> }) {
+export function AddLinkBar({ onAdd, extraAction }: { onAdd: (video: NewVideo) => Promise<void>; extraAction?: React.ReactNode }) {
   const [url, setUrl] = useState('');
   const [previewTitle, setPreviewTitle] = useState('');
   const [busy, setBusy] = useState(false);
@@ -82,6 +82,7 @@ export function AddLinkBar({ onAdd }: { onAdd: (video: NewVideo) => Promise<void
           aria-label="Link YouTube"
           inputMode="url"
         />
+        {extraAction}
         <button className="room-add-btn" type="submit" disabled={busy || !trimmed} aria-label="Thêm vào hàng đợi">
           <Plus size={20} />
         </button>

@@ -1,6 +1,6 @@
 import { ListMusic, Play, Plus, Radio } from 'lucide-react';
 import { getYoutubeThumbnailUrl } from '../../lib/youtube';
-import type { PlaylistWithRole, Song } from '../../types';
+import type { PlaylistWithRole, RecentRoom, Song } from '../../types';
 import { RoomLauncher } from '../room/RoomLauncher';
 import { PlaylistCardSkeletons } from '../ui/Skeletons';
 import { PlaylistCard } from './PlaylistCard';
@@ -13,6 +13,8 @@ type Props = {
   onNavigate: (path: string) => void;
   onCreatePlaylist: () => void;
   onPlay: (song: Song, list: Song[]) => void;
+  rooms: RecentRoom[];
+  onOpenRoom: (code: string) => void;
 };
 
 function SongTile({ song, list, onPlay }: { song: Song; list: Song[]; onPlay: Props['onPlay'] }) {
@@ -44,7 +46,9 @@ export function NewPlaylistCard({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-export function HomeView({ playlists, songs, loading, onOpenPlaylist, onNavigate, onCreatePlaylist, onPlay }: Props) {
+const ROOM_STATUS: Record<RecentRoom['status'], string> = { playing: 'Đang phát', paused: 'Tạm dừng', idle: 'Đang chờ bài' };
+
+export function HomeView({ playlists, songs, loading, onOpenPlaylist, onNavigate, onCreatePlaylist, onPlay, rooms, onOpenRoom }: Props) {
   const playable = songs.filter((song) => song.youtube_url);
   const recent = playable.slice(0, 12);
   const favorites = playable.filter((song) => song.favorite);
@@ -72,6 +76,35 @@ export function HomeView({ playlists, songs, loading, onOpenPlaylist, onNavigate
         </div>
         <Radio className="hero-art" size={220} strokeWidth={1.2} aria-hidden="true" />
       </section>
+
+      {rooms.length > 0 && (
+        <section className="section" aria-labelledby="home-rooms">
+          <div className="section-head">
+            <div>
+              <h2 id="home-rooms">Phòng gần đây</h2>
+              <p>Vào lại các phòng nghe chung bạn đang tham gia.</p>
+            </div>
+          </div>
+          <div className="room-card-list">
+            {rooms.map((room) => (
+              <button key={room.id} className="room-card" type="button" onClick={() => onOpenRoom(room.code)} aria-label={`Vào lại phòng ${room.name}`}>
+                <span className={room.status === 'playing' ? 'room-card-icon is-live' : 'room-card-icon'}>
+                  <Radio size={20} />
+                </span>
+                <span className="room-card-text">
+                  <strong>{room.name}</strong>
+                  <small>
+                    {ROOM_STATUS[room.status]} · {room.memberCount} người
+                  </small>
+                </span>
+                <span className="room-card-code" aria-label={`Mã ${room.code}`}>
+                  {room.code}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="section" aria-labelledby="home-playlists">
         <div className="section-head">

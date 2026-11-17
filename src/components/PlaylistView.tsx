@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Compass } from 'lucide-react';
-import type { FilterMode, PlaylistWithRole, Song, SongInput } from '../types';
+import type { FilterMode, PlaylistWithRole, RecentRoom, Song, SongInput } from '../types';
 import { createPlaylist, deletePlaylist, getPlaylists } from '../lib/playlistApi';
+import { addManyToQueue, createRoom, describeAddMany, getRecentRooms } from '../lib/roomApi';
+import { songsToVideos } from '../lib/playlistToRoom';
 import { createSong, deleteSong, getAllSongs, importSongs, toSongInput, updateSong } from '../lib/songApi';
 import { supabase } from '../lib/supabase';
 import { CreatePlaylistDialog, ShareDialog } from './app/Dialogs';
@@ -54,6 +56,8 @@ export function PlaylistView({ inviteRedeemed }: { inviteRedeemed: string | null
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isCreatorOpen, setIsCreatorOpen] = useState(false);
   const [isShareOpen, setIsShareOpen] = useState(false);
+  const [recentRooms, setRecentRooms] = useState<RecentRoom[]>([]);
+  const [startingRoom, setStartingRoom] = useState(false);
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
   // Nguồn của hàng đợi phát. Phát cả playlist (không lọc) thì theo dõi playlist đó trực tiếp để bài mới
   // thêm / bài bị xoá có hiệu lực ngay; các nguồn khác (đã lọc, hàng bài ở trang chủ...) giữ danh sách id.
@@ -129,6 +133,18 @@ export function PlaylistView({ inviteRedeemed }: { inviteRedeemed: string | null
     setTag(null);
   }, [activePlaylistId]);
 
+  // Trang chủ luôn hiện các phòng còn mở của bạn (tải lại mỗi lần quay về trang chủ).
+  useEffect(() => {
+    if (view !== 'home') return;
+    let cancelled = false;
+    void getRecentRooms()
+      .then((rooms) => !cancelled && setRecentRooms(rooms))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [view]);
+
   const go = useCallback((path: string) => {
     setQuery('');
     navigate(path);
@@ -173,6 +189,28 @@ export function PlaylistView({ inviteRedeemed }: { inviteRedeemed: string | null
       go(`/playlist/${playlist.id}`);
     } catch (error) {
       setMessage(readError(error, 'Không tạo được playlist.'));
+    }
+  }
+
+  // Tạo phòng mới với cả playlist đã nạp sẵn vào hàng đợi, rồi vào phòng.
+  async function handleListenTogether() {
+    if (!activePlaylist) return;
+    const videos = songsToVideos(playlistSongs); // cả playlist, không theo bộ lọc đang xem
+    if (!videos.length) {
+      setMessage('Playlist chưa có bài nào có link YouTube hợp lệ.');
+      return;
+    }
+
+    setStartingRoom(true);
+    try {
+      const room = await createRoom(activePlaylist.name, 'host_only');
+      const result = await addManyToQueue(room.id, videos);
+      if (result.added < videos.length) setMessage(describeAddMany(result));
+      navigate(`/room/${room.code}`);
+    } catch (error) {
+      setMessage(readError(error, 'Không tạo được phòng.'));
+    } finally {
+      setStartingRoom(false);
     }
   }
 
@@ -316,6 +354,8 @@ export function PlaylistView({ inviteRedeemed }: { inviteRedeemed: string | null
             onNavigate={go}
             onCreatePlaylist={() => setIsCreatorOpen(true)}
             onPlay={playSong}
+            rooms={recentRooms}
+            onOpenRoom={(code) => go(`/room/${code}`)}
           />
         ) : view === 'library' ? (
           <LibraryView playlists={playlists} songs={songs} onOpenPlaylist={(id) => go(`/playlist/${id}`)} onCreatePlaylist={() => setIsCreatorOpen(true)} />
@@ -340,6 +380,8 @@ export function PlaylistView({ inviteRedeemed }: { inviteRedeemed: string | null
               setIsFormOpen(true);
             }}
             onShare={() => setIsShareOpen(true)}
+            onListenTogether={() => void handleListenTogether()}
+            listenBusy={startingRoom}
             onExport={handleExport}
             onImport={() => fileInputRef.current?.click()}
             onDeletePlaylist={() => void handleDeletePlaylist()}

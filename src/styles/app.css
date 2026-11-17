@@ -690,3 +690,70 @@
     gap: 12px;
   }
 }
+
+/* --- Phòng gần đây (trang chủ) --- */
+.room-card-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.room-card {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--glass);
+  color: inherit;
+  text-align: left;
+  transition:
+    background 0.2s,
+    transform 0.2s;
+}
+
+.room-card:hover {
+  background: var(--glass-hover);
+  transform: translateY(-2px);
+}
+
+.room-card-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--glass-strong);
+  color: var(--muted);
+}
+
+.room-card-icon.is-live {
+  background: rgba(61, 220, 132, 0.18);
+  color: var(--success);
+}
+
+.room-card-text strong,
+.room-card-text small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-card-text small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.room-card-code {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--glass-strong);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}

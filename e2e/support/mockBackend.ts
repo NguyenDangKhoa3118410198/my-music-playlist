@@ -22,6 +22,8 @@ type QueueItem = {
   position: number;
   status: 'queued' | 'playing' | 'played' | 'skipped';
   created_at: string;
+  finished_at?: string | null;
+  end_reason?: string | null;
 };
 
 type Member = { room_id: string; user_id: string; role: Role; joined_at: string };
@@ -53,6 +55,16 @@ export type MockOptions = {
   latencyMs?: number;
   /** false: đóng kết nối Realtime ngay (để thử cơ chế tải lại định kỳ). */
   realtime?: boolean;
+  /** Lịch sử có sẵn (mới nhất trước). */
+  history?: { title: string; reason?: 'ended' | 'skip' | 'unplayable'; addedBy?: string; minutesAgo?: number }[];
+  /** Server "tự tạm dừng" phòng bỏ hoang khi client gọi room_settle: đặt vị trí này và chuyển sang paused. */
+  staleRoomPausesAt?: number;
+  /** Phòng đã đóng từ đầu. */
+  closed?: boolean;
+  /** Người dùng là khách ẩn danh (không có playlist). */
+  anonymous?: boolean;
+  /** Các phòng KHÁC mà người dùng là thành viên (cho mục "Phòng gần đây" ở trang chủ). */
+  recentRooms?: { name: string; code: string; status?: 'playing' | 'paused' | 'idle'; members?: number; minutesAgo?: number }[];
 };
 
 const ROOM_ID = 'cccccccc-0000-4000-8000-0000000000aa';
@@ -104,6 +116,8 @@ export class MockBackend {
     [GUEST, 'Lan'],
   ]);
   rpcCalls: { fn: string; body: Record<string, unknown> }[] = [];
+  // Mọi yêu cầu đọc bảng (GET/HEAD), để test đếm số lần tải lại.
+  restLog: { method: string; table: string; query: string }[] = [];
   private sockets: { ws: WebSocketRoute; topic: string; filters: { id: number; table: string }[] }[] = [];
   private meId = ME;
   private signedIn: boolean;
@@ -122,6 +136,11 @@ export class MockBackend {
       member: true,
       latencyMs: 0,
       realtime: true,
+      history: [],
+      staleRoomPausesAt: -1,
+      closed: false,
+      anonymous: false,
+      recentRooms: [],
       ...opts,
     };
     this.signedIn = this.opts.signedIn;
@@ -159,6 +178,30 @@ export class MockBackend {
     };
     this.opts.songs.forEach((song) => this.addSong(song.title, song.addedBy ?? ME));
     this.seedLibrary();
+    this.seedHistory();
+    if (this.opts.closed) this.room.closed_at = new Date().toISOString();
+  }
+
+  private seedHistory() {
+    this.opts.history.forEach((entry, index) => {
+      const videoId = `hist${index}`.padEnd(11, 'h');
+      const finished = new Date(Date.now() - (entry.minutesAgo ?? index + 1) * 60_000).toISOString();
+      const reason = entry.reason ?? 'ended';
+      this.queue.push({
+        id: `99999999-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+        room_id: ROOM_ID,
+        video_id: videoId,
+        youtube_url: `https://youtu.be/${videoId}`,
+        title: entry.title,
+        thumbnail: null,
+        added_by: entry.addedBy ?? ME,
+        position: -100 + index,
+        status: reason === 'ended' ? 'played' : 'skipped',
+        created_at: finished,
+        finished_at: finished,
+        end_reason: reason,
+      });
+    });
   }
 
   private seedLibrary() {
@@ -229,9 +272,9 @@ export class MockBackend {
     });
   }
 
-  private advance(finished: 'played' | 'skipped') {
+  private advance(finished: 'played' | 'skipped', reason = 'ended') {
     const cur = this.queue.find((q) => q.id === this.state.current_queue_id);
-    if (cur) cur.status = finished;
+    if (cur) Object.assign(cur, { status: finished, finished_at: new Date().toISOString(), end_reason: reason });
     const next = this.queue.filter((q) => q.status === 'queued').sort((a, b) => a.position - b.position)[0];
     if (next) this.start(next.id);
     else
@@ -313,15 +356,68 @@ export class MockBackend {
       case 'room_next': {
         const reason = String(body.p_reason);
         if (reason === 'skip' && !this.canControl()) return denied;
-        if (this.state.current_queue_id === body.p_expected) this.advance(reason === 'ended' ? 'played' : 'skipped');
+        if (this.state.current_queue_id === body.p_expected) this.advance(reason === 'ended' ? 'played' : 'skipped', reason);
         return { data: this.state };
       }
       case 'room_remove': {
         const item = this.queue.find((q) => q.id === body.p_queue);
         if (!item) return { data: null };
         if (!(this.canControl() || item.added_by === this.meId)) return { error: 'Bạn không có quyền xoá bài này.' };
-        if (this.state.current_queue_id === item.id) this.advance('skipped');
+        if (this.state.current_queue_id === item.id) this.advance('skipped', 'removed');
         this.queue = this.queue.filter((q) => q.id !== item.id);
+        return { data: null };
+      }
+      case 'room_settle': {
+        // Mô phỏng server: phòng bỏ hoang thì tạm dừng tại vị trí đã lưu.
+        if (this.opts.staleRoomPausesAt >= 0 && this.state.status === 'playing') {
+          Object.assign(this.state, { status: 'paused', anchor_pos: this.opts.staleRoomPausesAt, anchor_at: new Date().toISOString() });
+          touch();
+        }
+        return { data: this.state };
+      }
+      case 'room_ping':
+        return { data: null };
+      case 'room_add_many': {
+        if (!this.myRole()) return { error: 'Bạn không ở trong phòng này.' };
+        if (this.room.closed_at) return { error: 'Phòng đã đóng.' };
+        const items = body.p_items as { video_id?: string; title?: string }[];
+        if (!Array.isArray(items)) return { error: 'Danh sách bài không hợp lệ.' };
+        if (items.length > 100) return { error: 'Mỗi lần chỉ thêm tối đa 100 bài.' };
+        const unlimited = this.myRole() === 'host' || this.myRole() === 'dj';
+        const limit = this.room.max_queue_per_user as number;
+        let pending = this.queue.filter((q) => q.added_by === this.meId && q.status === 'queued').length;
+        const result = { added: 0, skipped_limit: 0, skipped_duplicate: 0, skipped_invalid: 0 };
+        for (const entry of items) {
+          const vid = entry.video_id ?? '';
+          if (!/^[A-Za-z0-9_-]{6,20}$/.test(vid) || !(entry.title ?? '').trim()) { result.skipped_invalid += 1; continue; }
+          if (this.queue.some((q) => q.video_id === vid && (q.status === 'queued' || q.status === 'playing'))) { result.skipped_duplicate += 1; continue; }
+          if (!unlimited && pending >= limit) { result.skipped_limit += 1; continue; }
+          this.addSong(String(entry.title), this.meId);
+          const item = this.queue[this.queue.length - 1];
+          item.video_id = vid;
+          item.youtube_url = `https://youtu.be/${vid}`;
+          item.thumbnail = null;
+          result.added += 1;
+          pending += 1;
+        }
+        return { data: result };
+      }
+      case 'room_leave': {
+        const mine = this.myRole();
+        if (!mine) return { data: null };
+        const others = this.members.filter((m) => m.user_id !== this.meId);
+        if (mine === 'host') {
+          if (!others.length) this.room.closed_at = new Date().toISOString();
+          else others.sort((a) => (a.role === 'dj' ? -1 : 1))[0].role = 'host';
+        }
+        this.members = others;
+        return { data: null };
+      }
+      case 'room_close': {
+        if (this.myRole() !== 'host') return { error: 'Chỉ host mới đóng được phòng.' };
+        this.room.closed_at = new Date().toISOString();
+        Object.assign(this.state, { status: 'idle', current_queue_id: null });
+        touch();
         return { data: null };
       }
       case 'room_set_role': {
@@ -357,6 +453,7 @@ export class MockBackend {
     send('room_state', this.state);
     send('room_queue', {});
     send('room_members', {});
+    send('rooms', this.room);
   }
 
   /** Giả lập một người khác điều khiển phòng (đẩy qua Realtime tới trình duyệt). */
@@ -371,6 +468,14 @@ export class MockBackend {
     });
   }
 
+  /** Chủ phòng (người khác) đóng phòng: đẩy sự kiện Realtime tới trình duyệt. */
+  remoteClose() {
+    this.remote((b) => {
+      b.room.closed_at = new Date().toISOString();
+      Object.assign(b.state, { status: 'idle', current_queue_id: null, version: (b.state.version as number) + 1 });
+    });
+  }
+
   remoteAddSong(title: string, addedBy = GUEST) {
     this.remote((b) => b.addSong(title, addedBy));
   }
@@ -378,7 +483,7 @@ export class MockBackend {
   async install(page: Page) {
     // Session giả trong localStorage (supabase-js đọc ra như đã đăng nhập).
     if (this.signedIn) {
-      const session = fakeSession(ME, this.opts.displayName);
+      const session = fakeSession(ME, this.opts.displayName, this.opts.anonymous);
       await page.addInitScript(
         ([key, value]) => {
           if (!localStorage.getItem(key)) localStorage.setItem(key, value);
@@ -521,16 +626,52 @@ export class MockBackend {
       return rows([]);
     }
 
+    this.restLog.push({ method, table, query: url.search });
+
     switch (table) {
       case 'rooms': {
-        const code = (url.searchParams.get('code') ?? '').replace('eq.', '').toUpperCase();
+        const codeParam = url.searchParams.get('code');
         const isMember = this.members.some((m) => m.user_id === this.meId);
+        if (codeParam === null) {
+          // Danh sách "Phòng gần đây": phòng chính (nếu còn mở) + các phòng khác trong cấu hình, kèm trạng thái và số thành viên.
+          const now = Date.now();
+          const list = this.opts.recentRooms.map((r, i) => ({
+            id: `rrrrrrrr-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
+            code: r.code,
+            name: r.name,
+            room_state: { status: r.status ?? 'idle', updated_at: new Date(now - (r.minutesAgo ?? 10) * 60_000).toISOString() },
+            room_members: [{ count: r.members ?? 1 }],
+          }));
+          if (isMember && !this.room.closed_at) {
+            list.push({
+              id: ROOM_ID,
+              code: String(this.room.code),
+              name: String(this.room.name),
+              room_state: { status: this.state.status as 'playing' | 'paused' | 'idle', updated_at: String(this.state.updated_at) },
+              room_members: [{ count: this.members.length }],
+            });
+          }
+          return rows(list);
+        }
+        const code = codeParam.replace('eq.', '').toUpperCase();
         return rows(code === this.room.code && isMember ? [this.room] : []);
       }
       case 'room_state':
         return rows([this.state]);
-      case 'room_queue':
+      case 'room_queue': {
+        if ((url.searchParams.get('status') ?? '').includes('played')) {
+          // Lịch sử: bài đã phát/bỏ qua, mới nhất trước.
+          const history = this.queue
+            .filter((q) => q.status === 'played' || q.status === 'skipped')
+            .sort((a, b) => String(b.finished_at).localeCompare(String(a.finished_at)));
+          // Yêu cầu đếm (HEAD): chỉ trả content-range, không có thân phản hồi.
+          if (method === 'HEAD') {
+            return route.fulfill({ status: 200, headers: { ...cors, 'content-range': `*/${history.length}` } });
+          }
+          return rows(history);
+        }
         return rows(this.queue.filter((q) => q.status === 'queued' || q.status === 'playing').sort((a, b) => a.position - b.position));
+      }
       case 'room_members':
         return rows(this.members);
       case 'profiles':

@@ -64,6 +64,8 @@ export type RoomMember = {
   display_name: string;
 };
 
+export type RoomEndReason = 'ended' | 'skip' | 'unplayable' | 'removed';
+
 export type RoomQueueItem = {
   id: string;
   room_id: string;
@@ -75,6 +77,25 @@ export type RoomQueueItem = {
   position: number;
   status: RoomQueueStatus;
   created_at: string;
+  /** Chỉ có với bài đã phát/bỏ qua (lịch sử). */
+  finished_at?: string | null;
+  end_reason?: RoomEndReason | null;
+};
+
+export type AddManyResult = {
+  added: number;
+  skipped_limit: number;
+  skipped_duplicate: number;
+  skipped_invalid: number;
+};
+
+export type RecentRoom = {
+  id: string;
+  code: string;
+  name: string;
+  status: RoomPlaybackStatus;
+  updatedAt: string;
+  memberCount: number;
 };
 
 export type RoomState = {

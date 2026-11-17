@@ -1,25 +1,34 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, Headphones, Link2, ListMusic, Music2, Pause, Play, SkipForward, Users, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, Check, DoorClosed, DoorOpen, Headphones, History, Link2, ListMusic, ListPlus, MoreHorizontal, Music2, Pause, Play, SkipForward, Users, Volume2, VolumeX } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AddLinkBar, type NewVideo } from '../components/room/AddLinkBar';
 import { Spinner } from '../components/ui/Spinner';
 import { AvatarStack } from '../components/room/Avatar';
+import { HistoryPanel } from '../components/room/HistoryPanel';
+import { ImportPlaylistDialog } from '../components/room/ImportPlaylistDialog';
 import { MembersPanel } from '../components/room/MembersPanel';
+import { Menu } from '../components/ui/Menu';
 import { QueuePanel } from '../components/room/QueuePanel';
 import { toAnchor, useSyncedPlayer } from '../hooks/useSyncedPlayer';
 import { useRoomRealtime } from '../hooks/useRoomRealtime';
 import { serverNow, syncServerClock } from '../lib/clock';
 import {
+  addManyToQueue,
   addToQueue,
   buildRoomUrl,
+  closeRoom,
+  describeAddMany,
   errorMessage,
   getRoomByCode,
   isVersionConflict,
+  leaveRoom,
   nextInRoom,
   pauseRoom,
+  pingRoom,
   playRoom,
   removeFromQueue,
   seekRoom,
+  settleRoom,
   setMemberRole,
 } from '../lib/roomApi';
 import { expectedPosition } from '../lib/syncMath';
@@ -32,14 +41,18 @@ function formatTime(sec: number) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
-export function RoomPage({ userId }: { userId: string }) {
+// Nhịp tim: cho server biết còn người nghe. Thưa hơn ngưỡng 120 giây của server để một lần mất gói không bị coi là bỏ đi.
+const HEARTBEAT_MS = 45_000;
+
+export function RoomPage({ userId, isAnonymous = false }: { userId: string; isAnonymous?: boolean }) {
   const { code = '' } = useParams();
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const [room, setRoom] = useState<Room | null>(null);
   const [joined, setJoined] = useState(false);
-  const [tab, setTab] = useState<'queue' | 'members'>('queue');
+  const [tab, setTab] = useState<'queue' | 'history' | 'members'>('queue');
+  const [importOpen, setImportOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [copied, setCopied] = useState(false);
   // Tắt tiếng chỉ cho riêng máy này, tạm thời: không lưu lại, tải lại trang là bật tiếng như mặc định.
@@ -49,9 +62,10 @@ export function RoomPage({ userId }: { userId: string }) {
   const seekDeadlineRef = useRef(0);
   const keyboardCommitRef = useRef<number | undefined>(undefined);
 
-  const { state, queue, members, onlineIds, connected, applyState, refreshState } = useRoomRealtime(
+  const { state, queue, history, historyCount, members, onlineIds, connected, closed, applyState, refreshState } = useRoomRealtime(
     room?.id ?? null,
     userId,
+    { historyOpen: tab === 'history' },
   );
 
   const current = queue.find((item) => item.id === state?.current_queue_id) ?? null;
@@ -65,7 +79,7 @@ export function RoomPage({ userId }: { userId: string }) {
     void Promise.all([getRoomByCode(code), syncServerClock()])
       .then(([found]) => {
         if (cancelled) return;
-        if (!found || found.closed_at) navigate(`/join/${code.toUpperCase()}`, { replace: true });
+        if (!found) navigate(`/join/${code.toUpperCase()}`, { replace: true });
         else setRoom(found);
       })
       .catch((e) => !cancelled && setMessage(errorMessage(e)));
@@ -73,6 +87,32 @@ export function RoomPage({ userId }: { userId: string }) {
       cancelled = true;
     };
   }, [code, navigate]);
+
+  // Vào phòng: dọn trạng thái "đang phát" cũ nếu lâu không ai nghe (server tạm dừng lại), rồi ping định kỳ.
+  // Thứ tự quan trọng: settle TRƯỚC ping, vì ping của chính mình sẽ làm phòng trông như "đang có người".
+  const roomId = room?.id ?? null;
+  const roomClosed = Boolean(room?.closed_at) || closed;
+  useEffect(() => {
+    if (!roomId || roomClosed) return undefined;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const settled = await settleRoom(roomId);
+        if (!cancelled) applyState(settled);
+      } catch {
+        /* không chặn việc vào phòng */
+      }
+      await pingRoom(roomId).catch(() => undefined);
+    })();
+
+    // Không dừng ping khi tab ẩn: người nghe nhạc nền vẫn là "đang nghe".
+    const timer = window.setInterval(() => void pingRoom(roomId).catch(() => undefined), HEARTBEAT_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [roomId, roomClosed, applyState]);
 
   useEffect(() => {
     if (!message) return undefined;
@@ -193,6 +233,53 @@ export function RoomPage({ userId }: { userId: string }) {
     setMessage(`Đã thêm “${video.title}” vào hàng đợi`);
   }
 
+  async function handleRequeue(item: RoomQueueItem) {
+    if (!room) return;
+    try {
+      await addToQueue(room.id, {
+        videoId: item.video_id,
+        url: item.youtube_url,
+        title: item.title,
+        thumbnail: getVideoThumbnail(item.video_id),
+      });
+      setMessage(`Đã thêm lại “${item.title}” vào hàng đợi`);
+    } catch (e) {
+      setMessage(errorMessage(e));
+    }
+  }
+
+  async function handleImport(videos: Parameters<typeof addManyToQueue>[1]) {
+    if (!room) return;
+    const result = await addManyToQueue(room.id, videos);
+    setImportOpen(false);
+    setTab('queue');
+    setMessage(describeAddMany(result));
+  }
+
+  async function handleLeave() {
+    if (!room) return;
+    const warning = isHost
+      ? 'Bạn là chủ phòng. Rời đi sẽ chuyển quyền chủ phòng cho người khác (hoặc đóng phòng nếu không còn ai). Rời phòng?'
+      : 'Rời phòng này?';
+    if (!window.confirm(warning)) return;
+    try {
+      await leaveRoom(room.id);
+      navigate('/');
+    } catch (e) {
+      setMessage(errorMessage(e));
+    }
+  }
+
+  async function handleCloseRoom() {
+    if (!room || !window.confirm('Đóng phòng cho tất cả mọi người? Không ai vào lại được nữa.')) return;
+    try {
+      await closeRoom(room.id);
+      navigate('/');
+    } catch (e) {
+      setMessage(errorMessage(e));
+    }
+  }
+
   function handleRemove(item: RoomQueueItem) {
     if (room) void run(() => removeFromQueue(room.id, item.id));
   }
@@ -221,6 +308,24 @@ export function RoomPage({ userId }: { userId: string }) {
           <span className="sk sk-line" />
           {message && <p className="form-message">{message}</p>}
         </div>
+      </main>
+    );
+  }
+
+  if (roomClosed) {
+    return (
+      <main className="center-shell">
+        <div className="room-ambient" aria-hidden="true" />
+        <section className="center-card">
+          <div className="center-icon is-warning">
+            <DoorClosed size={36} />
+          </div>
+          <h1>Phòng đã đóng</h1>
+          <p>“{room.name}” đã được chủ phòng đóng, không thể vào lại nữa. Bạn có thể tạo một phòng mới từ trang chủ.</p>
+          <button className="btn btn-primary btn-lg btn-block" type="button" onClick={() => navigate('/')}>
+            Về trang chủ
+          </button>
+        </section>
       </main>
     );
   }
@@ -272,6 +377,15 @@ export function RoomPage({ userId }: { userId: string }) {
           {copied ? <Check size={17} /> : <Link2 size={17} />}
           <span>{copied ? 'Đã chép' : 'Mời bạn'}</span>
         </button>
+        <Menu
+          label="Tuỳ chọn phòng"
+          icon={<MoreHorizontal size={20} />}
+          buttonClassName="icon-btn"
+          items={[
+            { label: 'Rời phòng', icon: <DoorOpen size={18} />, onClick: () => void handleLeave() },
+            { label: 'Đóng phòng cho mọi người', icon: <DoorClosed size={18} />, onClick: () => void handleCloseRoom(), danger: true, hidden: !isHost },
+          ]}
+        />
       </header>
 
       {!connected && (
@@ -396,6 +510,9 @@ export function RoomPage({ userId }: { userId: string }) {
             <button role="tab" aria-selected={tab === 'queue'} className={tab === 'queue' ? 'active' : ''} type="button" onClick={() => setTab('queue')}>
               <ListMusic size={16} /> Hàng đợi ({queue.length})
             </button>
+            <button role="tab" aria-selected={tab === 'history'} className={tab === 'history' ? 'active' : ''} type="button" onClick={() => setTab('history')}>
+              <History size={16} /> Đã phát ({historyCount})
+            </button>
             <button role="tab" aria-selected={tab === 'members'} className={tab === 'members' ? 'active' : ''} type="button" onClick={() => setTab('members')}>
               <Users size={16} /> Mọi người ({members.length})
             </button>
@@ -412,6 +529,8 @@ export function RoomPage({ userId }: { userId: string }) {
                 canControl={canControl}
                 onRemove={handleRemove}
               />
+            ) : tab === 'history' ? (
+              <HistoryPanel items={history} members={members} userId={userId} onRequeue={(item) => void handleRequeue(item)} />
             ) : (
               <MembersPanel
                 members={members}
@@ -423,9 +542,37 @@ export function RoomPage({ userId }: { userId: string }) {
             )}
           </div>
 
-          <AddLinkBar onAdd={handleAdd} />
+          {/* Nút nằm TRONG thanh dán link: trên điện thoại thanh này cố định ở đáy nên luôn thấy được
+              (đặt ngoài thanh thì nó bị thanh che cho tới khi cuộn trang). */}
+          <AddLinkBar
+            onAdd={handleAdd}
+            extraAction={
+              isAnonymous ? undefined : (
+                <button
+                  className="icon-btn"
+                  type="button"
+                  aria-label="Thêm từ playlist của bạn"
+                  title="Thêm từ playlist của bạn"
+                  onClick={() => setImportOpen(true)}
+                >
+                  <ListPlus size={20} />
+                </button>
+              )
+            }
+          />
         </section>
       </div>
+      {importOpen && (
+        <ImportPlaylistDialog
+          onClose={() => setImportOpen(false)}
+          onImport={handleImport}
+          limitNote={
+            myRole === 'host' || myRole === 'dj'
+              ? 'Bạn là chủ phòng/DJ nên không bị giới hạn số bài chờ.'
+              : `Người nghe chỉ có tối đa ${room.max_queue_per_user} bài chờ cùng lúc.`
+          }
+        />
+      )}
     </main>
   );
 }
