@@ -35,7 +35,6 @@ import {
   settleRoom,
   setMemberRole,
 } from '../lib/roomApi';
-import { movePosition, type QueueMove } from '../lib/queueOrder';
 import { expectedPosition } from '../lib/syncMath';
 import { getVideoThumbnail } from '../lib/youtube';
 import { describeYoutubeError } from '../lib/youtubePlayer';
@@ -320,10 +319,8 @@ export function RoomPage({ userId, isAnonymous = false }: { userId: string; isAn
     if (room) void run(() => removeFromQueue(room.id, item.id));
   }
 
-  function handleMove(item: RoomQueueItem, move: QueueMove) {
+  function handleReorder(item: RoomQueueItem, position: number) {
     if (!room) return;
-    const position = movePosition(queue, item.id, state?.current_queue_id ?? null, move);
-    if (position === null) return;
     void run(async () => {
       await reorderQueue(room.id, item.id, position);
       await refreshQueue();
@@ -594,7 +591,7 @@ export function RoomPage({ userId, isAnonymous = false }: { userId: string; isAn
                     userId={userId}
                     canControl={canControl}
                     onRemove={handleRemove}
-                    onMove={handleMove}
+                    onReorder={handleReorder}
                   />
                 ) : tab === 'history' ? (
                   <HistoryPanel items={history} members={members} userId={userId} onRequeue={(item) => void handleRequeue(item)} />

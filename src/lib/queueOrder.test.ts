@@ -1,7 +1,7 @@
 // Chạy: npm test
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { movePosition } from './queueOrder.ts';
+import { movePosition, positionAtIndex } from './queueOrder.ts';
 
 const items = [
   { id: 'cur', position: 1 },
@@ -55,4 +55,16 @@ test('đổi nhiều lần liên tiếp vẫn giữ thứ tự đúng (vị trí
   }
   const ids = [...list].sort((x, y) => x.position - y.position).map((i) => i.id);
   assert.deepEqual(ids, ['cur', 'b', 'c', 'a']);
+});
+
+test('kéo thả: đưa bài tới đúng chỉ số, kể cả kéo xuống', () => {
+  assert.deepEqual(order('c', positionAtIndex(items, 'c', 'cur', 1)), ['cur', 'c', 'a', 'b']);
+  assert.deepEqual(order('a', positionAtIndex(items, 'a', 'cur', 3)), ['cur', 'b', 'c', 'a']);
+  assert.deepEqual(order('b', positionAtIndex(items, 'b', 'cur', 2)), ['cur', 'a', 'b', 'c']);
+});
+
+test('kéo thả: thả ở chỗ cũ thì không đổi, kéo lên trên bài đang phát bị kẹp lại', () => {
+  assert.equal(positionAtIndex(items, 'b', 'cur', 2), null);
+  assert.deepEqual(order('c', positionAtIndex(items, 'c', 'cur', 0)), ['cur', 'c', 'a', 'b']);
+  assert.deepEqual(order('a', positionAtIndex(items, 'a', 'cur', 99)), ['cur', 'b', 'c', 'a']);
 });

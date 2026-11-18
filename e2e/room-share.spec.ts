@@ -71,6 +71,30 @@ test.describe('chế độ màn hình lớn', () => {
     expect(await page.evaluate(() => (window as unknown as { __yt: { players: unknown[] } }).__yt.players.length)).toBe(1);
   });
 
+  for (const size of [{ width: 1920, height: 1080 }, { width: 1366, height: 768 }]) {
+    test(`vừa khít màn hình ${size.width}x${size.height}: không có thanh cuộn của cả trang`, async ({ page, mock }, info) => {
+      test.skip(info.project.name !== 'desktop', 'bố cục màn hình lớn dành cho màn hình rộng');
+      await mock({
+        songs: [
+          { title: 'TRÚC NHÂN ft. MIN | CHUYỆN TÌNH TỨ CỨ TỪ TỪ TÍNH | OFFICIAL PERFORMANCE nhưng tên bài dài thêm nữa cho chắc ăn' },
+          ...Array.from({ length: 8 }, (_, i) => ({ title: `Bài tiếp theo số ${i + 1}` })),
+        ],
+      });
+      await page.setViewportSize(size);
+      await joinRoom(page);
+      await openRoomMenu(page);
+      await page.getByRole('menuitem', { name: 'Chế độ màn hình lớn' }).click();
+      await expect(page.getByRole('button', { name: 'Thoát màn hình lớn' })).toBeVisible();
+
+      const overflow = await page.evaluate(() => ({
+        page: document.documentElement.scrollHeight - window.innerHeight,
+        video: document.querySelector('.room-video')!.getBoundingClientRect().bottom - window.innerHeight,
+      }));
+      expect(overflow.page).toBeLessThanOrEqual(0); // không có thanh cuộn cho cả trang
+      expect(overflow.video).toBeLessThan(0); // video nằm gọn trong màn hình
+    });
+  }
+
   test('chưa có bài tiếp theo: nhắc quét mã để thêm', async ({ page, mock }) => {
     await mock({ songs: [{ title: 'Chỉ một bài' }] });
     await joinRoom(page);

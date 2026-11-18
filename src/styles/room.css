@@ -1111,8 +1111,21 @@
 }
 
 @media (min-width: 981px) {
+  /* Vừa khít một màn hình, không cuộn cả trang: video thu theo chiều cao còn lại, danh sách bên phải tự cuộn nếu dài */
   .room-shell.is-tv {
+    height: 100dvh;
+    min-height: 0;
     padding: 68px 28px 24px;
+    overflow: hidden;
+  }
+
+  .is-tv .room-stage {
+    width: min(100%, calc((100dvh - 330px) * 16 / 9));
+  }
+
+  .is-tv .tv-panel {
+    max-height: calc(100dvh - 92px);
+    overflow-y: auto;
   }
 
   .room-shell.is-tv .room-layout {
@@ -1202,4 +1215,48 @@
 
 .is-tv .reaction-bar {
   display: none;
+}
+
+/* --- Kéo thả đổi thứ tự --- */
+.room-grip {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--faint);
+  cursor: grab;
+  /* Không để trình duyệt cuộn trang khi ngón tay đang kéo tay cầm */
+  touch-action: none;
+  user-select: none;
+}
+
+.room-grip:hover {
+  background: var(--glass);
+  color: var(--text);
+}
+
+.room-list.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.room-item.is-dragging {
+  position: relative;
+  z-index: 6;
+  /* Nền đục: dòng bên dưới không được lộ qua chữ của dòng đang kéo */
+  background: var(--panel-soft);
+  box-shadow: var(--shadow-pop);
+  transition: none;
+}
+
+.room-item.drop-above {
+  box-shadow: inset 0 3px 0 var(--primary);
+}
+
+.room-item.drop-below {
+  box-shadow: inset 0 -3px 0 var(--primary);
 }
