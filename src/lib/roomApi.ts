@@ -263,6 +263,12 @@ export async function removeFromQueue(roomId: string, queueId: string) {
   if (error) throw error;
 }
 
+// position do client tính (xem lib/queueOrder.ts); server chỉ cho chủ phòng/DJ đổi và chỉ với bài đang chờ.
+export async function reorderQueue(roomId: string, queueId: string, position: number) {
+  const { error } = await supabase.rpc('room_reorder', { p_room: roomId, p_queue: queueId, p_position: position });
+  if (error) throw error;
+}
+
 export async function setMemberRole(roomId: string, userId: string, role: Exclude<RoomRole, 'host'>) {
   const { error } = await supabase.rpc('room_set_role', {
     p_room: roomId,

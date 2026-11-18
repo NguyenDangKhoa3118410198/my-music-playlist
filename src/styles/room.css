@@ -500,6 +500,12 @@
   white-space: nowrap;
 }
 
+.room-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .room-remove {
   display: grid;
   place-items: center;
@@ -946,4 +952,254 @@
   .room-tabs button svg {
     display: none;
   }
+}
+
+/* --- Mời bạn bè (mã QR) --- */
+.qr {
+  display: block;
+  border-radius: var(--radius-md);
+  /* Máy quét cần nền sáng, nên không theo giao diện tối */
+  background: #fff;
+}
+
+.qr-loading {
+  background: var(--glass);
+}
+
+.invite-body {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.invite-code {
+  margin: 0;
+  color: var(--muted);
+}
+
+.invite-code b {
+  margin-left: 6px;
+  color: var(--text);
+  font-size: 1.3rem;
+  letter-spacing: 0.18em;
+}
+
+.invite-url {
+  max-width: 100%;
+  margin: 0;
+  color: var(--faint);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+/* --- Chế độ màn hình lớn --- */
+.room-tv-exit {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 30;
+}
+
+/* Chừa dải trên cùng cho nút thoát, để nó không đè lên nội dung */
+.room-shell.is-tv {
+  padding-top: 68px;
+}
+
+.is-tv .room-header,
+.is-tv .room-controls,
+.is-tv .room-listening {
+  display: none;
+}
+
+.is-tv .room-layout {
+  max-width: none;
+  margin-top: 0;
+}
+
+.is-tv .room-now-text strong {
+  font-size: clamp(1.3rem, 2.6vw, 2.4rem);
+}
+
+.tv-panel {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.tv-join {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px;
+  border-radius: var(--radius-xl);
+  background: var(--glass);
+}
+
+.tv-join strong {
+  display: block;
+  font-size: 1.05rem;
+}
+
+.tv-join p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.tv-join b {
+  color: var(--text);
+  letter-spacing: 0.14em;
+}
+
+.tv-heading {
+  margin: 4px 4px 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tv-next {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tv-next li {
+  display: grid;
+  grid-template-columns: 28px 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: var(--glass);
+}
+
+.tv-next img,
+.tv-thumb {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  background: var(--panel-soft);
+  object-fit: cover;
+}
+
+.tv-next strong {
+  display: block;
+  overflow: hidden;
+  font-size: 1.05rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tv-next small,
+.tv-index,
+.tv-empty,
+.tv-more {
+  color: var(--muted);
+}
+
+.tv-index {
+  text-align: center;
+}
+
+.tv-empty,
+.tv-more {
+  margin: 0 4px;
+}
+
+@media (min-width: 981px) {
+  .room-shell.is-tv {
+    padding: 68px 28px 24px;
+  }
+
+  .room-shell.is-tv .room-layout {
+    grid-template-columns: minmax(0, 1fr) 400px;
+  }
+
+  .is-tv .room-side {
+    position: static;
+    max-height: none;
+  }
+}
+
+/* --- Thả cảm xúc --- */
+.reaction-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.reaction-float {
+  position: absolute;
+  bottom: 10%;
+  font-size: clamp(1.6rem, 4vw, 2.6rem);
+  line-height: 1;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45));
+  animation: reaction-rise 2.6s ease-out forwards;
+}
+
+@keyframes reaction-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.6);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(-8%) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-260%) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reaction-float {
+    animation: reaction-fade 2.6s ease-out forwards;
+  }
+
+  @keyframes reaction-fade {
+    0%,
+    70% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+}
+
+.reaction-bar {
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+@media (max-width: 980px) {
+  /* Phần video dính trên cùng nên giữ thanh này gọn để còn chỗ cho danh sách */
+  .reaction-bar {
+    gap: 4px;
+    margin-top: 0;
+  }
+
+  .reaction-bar .icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+.reaction-emoji {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.is-tv .reaction-bar {
+  display: none;
 }

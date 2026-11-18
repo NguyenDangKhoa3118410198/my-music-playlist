@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, DoorClosed, DoorOpen, Headphones, History, Link2, ListMusic, ListPlus, MoreHorizontal, Music2, Pause, Play, SkipForward, Users, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, Check, DoorClosed, DoorOpen, Headphones, History, Link2, ListMusic, ListPlus, MoreHorizontal, Music2, Pause, Play, QrCode as QrIcon, SkipForward, Tv, Users, Volume2, VolumeX, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AddLinkBar, type NewVideo } from '../components/room/AddLinkBar';
 import { Spinner } from '../components/ui/Spinner';
 import { AvatarStack } from '../components/room/Avatar';
 import { HistoryPanel } from '../components/room/HistoryPanel';
 import { ImportPlaylistDialog } from '../components/room/ImportPlaylistDialog';
+import { InviteDialog } from '../components/room/InviteDialog';
 import { MembersPanel } from '../components/room/MembersPanel';
 import { Menu } from '../components/ui/Menu';
 import { QueuePanel } from '../components/room/QueuePanel';
+import { ReactionBar, ReactionLayer } from '../components/room/Reactions';
+import { TvPanel } from '../components/room/TvPanel';
 import { toAnchor, useSyncedPlayer } from '../hooks/useSyncedPlayer';
 import { useRoomRealtime } from '../hooks/useRoomRealtime';
 import { serverNow, syncServerClock } from '../lib/clock';
@@ -27,10 +30,12 @@ import {
   pingRoom,
   playRoom,
   removeFromQueue,
+  reorderQueue,
   seekRoom,
   settleRoom,
   setMemberRole,
 } from '../lib/roomApi';
+import { movePosition, type QueueMove } from '../lib/queueOrder';
 import { expectedPosition } from '../lib/syncMath';
 import { getVideoThumbnail } from '../lib/youtube';
 import { describeYoutubeError } from '../lib/youtubePlayer';
@@ -53,6 +58,9 @@ export function RoomPage({ userId, isAnonymous = false }: { userId: string; isAn
   const [joined, setJoined] = useState(false);
   const [tab, setTab] = useState<'queue' | 'history' | 'members'>('queue');
   const [importOpen, setImportOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  // Chế độ màn hình lớn: dùng khi một máy nối TV/loa, mọi người quét QR để thêm bài từ điện thoại.
+  const [tv, setTv] = useState(false);
   const [message, setMessage] = useState('');
   const [copied, setCopied] = useState(false);
   // Tắt tiếng chỉ cho riêng máy này, tạm thời: không lưu lại, tải lại trang là bật tiếng như mặc định.
@@ -62,7 +70,7 @@ export function RoomPage({ userId, isAnonymous = false }: { userId: string; isAn
   const seekDeadlineRef = useRef(0);
   const keyboardCommitRef = useRef<number | undefined>(undefined);
 
-  const { state, queue, history, historyCount, members, onlineIds, connected, closed, applyState, refreshState } = useRoomRealtime(
+  const { state, queue, history, historyCount, members, onlineIds, connected, closed, applyState, refreshState, refreshQueue, reactions, sendReaction } = useRoomRealtime(
     room?.id ?? null,
     userId,
     { historyOpen: tab === 'history' },
@@ -165,6 +173,34 @@ export function RoomPage({ userId, isAnonymous = false }: { userId: string; isAn
     onEnded: handleEnded,
     onError: handleError,
   });
+
+  // Màn hình lớn: toàn màn hình + giữ màn hình sáng. Cả hai đều có thể bị trình duyệt từ chối, khi đó vẫn dùng được.
+  useEffect(() => {
+    if (!tv) return undefined;
+    let lock: WakeLockSentinel | null = null;
+    void document.documentElement.requestFullscreen?.().catch(() => undefined);
+    void navigator.wakeLock
+      ?.request('screen')
+      .then((sentinel) => {
+        lock = sentinel;
+      })
+      .catch(() => undefined);
+
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement) setTv(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setTv(false);
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('keydown', onKey);
+      void lock?.release().catch(() => undefined);
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    };
+  }, [tv]);
 
   // Phím tắt M: bật/tắt tiếng (không kích hoạt khi đang gõ vào ô nhập).
   useEffect(() => {
@@ -284,6 +320,16 @@ export function RoomPage({ userId, isAnonymous = false }: { userId: string; isAn
     if (room) void run(() => removeFromQueue(room.id, item.id));
   }
 
+  function handleMove(item: RoomQueueItem, move: QueueMove) {
+    if (!room) return;
+    const position = movePosition(queue, item.id, state?.current_queue_id ?? null, move);
+    if (position === null) return;
+    void run(async () => {
+      await reorderQueue(room.id, item.id, position);
+      await refreshQueue();
+    });
+  }
+
   function handleSetRole(member: RoomMember, role: 'dj' | 'listener') {
     if (room) void run(() => setMemberRole(room.id, member.user_id, role));
   }
@@ -350,7 +396,7 @@ export function RoomPage({ userId, isAnonymous = false }: { userId: string; isAn
       : `Đang phát · ${addedByName} thêm`;
 
   return (
-    <main className="room-shell">
+    <main className={tv ? 'room-shell is-tv' : 'room-shell'}>
       <div
         className="room-ambient"
         aria-hidden="true"
@@ -382,11 +428,19 @@ export function RoomPage({ userId, isAnonymous = false }: { userId: string; isAn
           icon={<MoreHorizontal size={20} />}
           buttonClassName="icon-btn"
           items={[
+            { label: 'Mã QR mời bạn bè', icon: <QrIcon size={18} />, onClick: () => setInviteOpen(true) },
+            { label: 'Chế độ màn hình lớn', icon: <Tv size={18} />, onClick: () => setTv(true) },
             { label: 'Rời phòng', icon: <DoorOpen size={18} />, onClick: () => void handleLeave() },
             { label: 'Đóng phòng cho mọi người', icon: <DoorClosed size={18} />, onClick: () => void handleCloseRoom(), danger: true, hidden: !isHost },
           ]}
         />
       </header>
+
+      {tv && (
+        <button className="btn btn-quiet room-tv-exit" type="button" onClick={() => setTv(false)}>
+          <X size={17} /> Thoát màn hình lớn
+        </button>
+      )}
 
       {!connected && (
         <div className="room-banner" role="status">
@@ -413,6 +467,7 @@ export function RoomPage({ userId, isAnonymous = false }: { userId: string; isAn
                 }
               />
             )}
+            {joined && <ReactionLayer reactions={reactions} />}
             {joined && muted && (
               <button className="room-muted-chip" type="button" onClick={() => setMuted(false)}>
                 <VolumeX size={16} /> Đang tắt tiếng · bấm để bật
@@ -502,66 +557,81 @@ export function RoomPage({ userId, isAnonymous = false }: { userId: string; isAn
                 <Headphones size={16} /> Bạn đang nghe cùng mọi người
               </p>
             )}
+            {joined && <ReactionBar onSend={sendReaction} disabled={!connected} />}
           </div>
         </section>
 
         <section className="room-side">
-          <div className="room-tabs" role="tablist">
-            <button role="tab" aria-selected={tab === 'queue'} className={tab === 'queue' ? 'active' : ''} type="button" onClick={() => setTab('queue')}>
-              <ListMusic size={16} /> Hàng đợi ({queue.length})
-            </button>
-            <button role="tab" aria-selected={tab === 'history'} className={tab === 'history' ? 'active' : ''} type="button" onClick={() => setTab('history')}>
-              <History size={16} /> Đã phát ({historyCount})
-            </button>
-            <button role="tab" aria-selected={tab === 'members'} className={tab === 'members' ? 'active' : ''} type="button" onClick={() => setTab('members')}>
-              <Users size={16} /> Mọi người ({members.length})
-            </button>
-          </div>
-
-          <div className="room-panel">
-            {tab === 'queue' ? (
-              <QueuePanel
-                items={queue}
-                currentId={state?.current_queue_id ?? null}
-                playing={isPlaying}
-                members={members}
-                userId={userId}
-                canControl={canControl}
-                onRemove={handleRemove}
-              />
-            ) : tab === 'history' ? (
-              <HistoryPanel items={history} members={members} userId={userId} onRequeue={(item) => void handleRequeue(item)} />
-            ) : (
-              <MembersPanel
-                members={members}
-                onlineIds={onlineIds}
-                userId={userId}
-                isHost={isHost}
-                onSetRole={handleSetRole}
-              />
-            )}
-          </div>
-
-          {/* Nút nằm TRONG thanh dán link: trên điện thoại thanh này cố định ở đáy nên luôn thấy được
-              (đặt ngoài thanh thì nó bị thanh che cho tới khi cuộn trang). */}
-          <AddLinkBar
-            onAdd={handleAdd}
-            extraAction={
-              isAnonymous ? undefined : (
-                <button
-                  className="icon-btn"
-                  type="button"
-                  aria-label="Thêm từ playlist của bạn"
-                  title="Thêm từ playlist của bạn"
-                  onClick={() => setImportOpen(true)}
-                >
-                  <ListPlus size={20} />
+          {tv ? (
+            <TvPanel
+              code={room.code}
+              url={buildRoomUrl(room.code)}
+              upcoming={queue.filter((item) => item.id !== state?.current_queue_id)}
+              members={members}
+              userId={userId}
+            />
+          ) : (
+            <>
+              <div className="room-tabs" role="tablist">
+                <button role="tab" aria-selected={tab === 'queue'} className={tab === 'queue' ? 'active' : ''} type="button" onClick={() => setTab('queue')}>
+                  <ListMusic size={16} /> Hàng đợi ({queue.length})
                 </button>
-              )
-            }
-          />
+                <button role="tab" aria-selected={tab === 'history'} className={tab === 'history' ? 'active' : ''} type="button" onClick={() => setTab('history')}>
+                  <History size={16} /> Đã phát ({historyCount})
+                </button>
+                <button role="tab" aria-selected={tab === 'members'} className={tab === 'members' ? 'active' : ''} type="button" onClick={() => setTab('members')}>
+                  <Users size={16} /> Mọi người ({members.length})
+                </button>
+              </div>
+
+              <div className="room-panel">
+                {tab === 'queue' ? (
+                  <QueuePanel
+                    items={queue}
+                    currentId={state?.current_queue_id ?? null}
+                    playing={isPlaying}
+                    members={members}
+                    userId={userId}
+                    canControl={canControl}
+                    onRemove={handleRemove}
+                    onMove={handleMove}
+                  />
+                ) : tab === 'history' ? (
+                  <HistoryPanel items={history} members={members} userId={userId} onRequeue={(item) => void handleRequeue(item)} />
+                ) : (
+                  <MembersPanel
+                    members={members}
+                    onlineIds={onlineIds}
+                    userId={userId}
+                    isHost={isHost}
+                    onSetRole={handleSetRole}
+                  />
+                )}
+              </div>
+
+              {/* Nút nằm TRONG thanh dán link: trên điện thoại thanh này cố định ở đáy nên luôn thấy được
+                  (đặt ngoài thanh thì nó bị thanh che cho tới khi cuộn trang). */}
+              <AddLinkBar
+                onAdd={handleAdd}
+                extraAction={
+                  isAnonymous ? undefined : (
+                    <button
+                      className="icon-btn"
+                      type="button"
+                      aria-label="Thêm từ playlist của bạn"
+                      title="Thêm từ playlist của bạn"
+                      onClick={() => setImportOpen(true)}
+                    >
+                      <ListPlus size={20} />
+                    </button>
+                  )
+                }
+              />
+            </>
+          )}
         </section>
       </div>
+      {inviteOpen && <InviteDialog code={room.code} roomName={room.name} onClose={() => setInviteOpen(false)} />}
       {importOpen && (
         <ImportPlaylistDialog
           onClose={() => setImportOpen(false)}

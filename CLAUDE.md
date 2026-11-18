@@ -42,5 +42,6 @@ Tham khảo nhaccuatui.com. Không dùng thẻ thống kê màu, khối "Dữ li
 - Chỉ dùng khoá công khai (publishable/anon) trong biến `VITE_*`: mọi biến `VITE_*` đều lộ ra trình duyệt.
 - `npm run test:sql` (cần Docker) chạy `supabase/tests/`: áp `schema.sql` + `rooms.sql` hai lần (kiểm tra chạy lại được) rồi
   chạy kịch bản trong `rooms.test.sql` (quyền, hàng đợi, lịch sử, nhịp tim, rời/đóng phòng, dọn phòng). Sửa SQL của phòng
-  thì thêm kịch bản vào đó và thử phá SQL để chắc test đỏ. Mock backend ở `e2e/support/mockBackend.ts` phải khớp hành vi SQL.
+  thì thêm kịch bản vào đó và thử phá SQL để chắc test đỏ. Mock backend ở `e2e/support/mockBackend.ts` phải khớp hành vi SQL
+  (mock còn giải mã được tin Realtime Broadcast dạng nhị phân mà `realtime-js` gửi, để test emoji).
 

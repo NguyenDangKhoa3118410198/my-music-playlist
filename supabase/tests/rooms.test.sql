@@ -14,7 +14,7 @@ declare
   c constant uuid := '00000000-0000-0000-0000-00000000000c';
   d constant uuid := '00000000-0000-0000-0000-00000000000d';
   r public.rooms; rid uuid; st public.room_state; q public.room_queue;
-  res jsonb; n int; x double precision; items jsonb; cur uuid; v0 int; rcode text; rid2 uuid;
+  res jsonb; n int; x double precision; items jsonb; cur uuid; v0 int; rcode text; rid2 uuid; ord text; qid uuid;
 begin
   -- ================= LỊCH SỬ =================
   perform t.as_user(a);
@@ -109,6 +109,30 @@ begin
 
   perform t.as_user(c);
   perform t.throws('thêm hàng loạt: người ngoài phòng bị từ chối', format($f$select public.room_add_many(%L, '[{"video_id":"vidOUTSIDE1","title":"x"}]'::jsonb)$f$, rid), '%không ở trong phòng%');
+
+  -- ================= ĐỔI THỨ TỰ =================
+  perform t.as_user(a);
+  select * into r from public.create_room('Đổi thứ tự'); rid := r.id; rcode := r.code;
+  perform public.room_add(rid, 'vidORDR0A01', 'u', 'A1');
+  perform public.room_add(rid, 'vidORDR0A02', 'u', 'A2');
+  perform public.room_add(rid, 'vidORDR0A03', 'u', 'A3');
+  perform t.as_user(b);
+  perform public.join_room(rcode);
+  perform public.room_add(rid, 'vidORDR0B01', 'u', 'B1');
+  select string_agg(title, ',' order by position) into ord from public.room_queue where room_id = rid and status = 'queued';
+  perform t.check('thêm bài: luôn xếp cuối hàng đợi, theo thứ tự thêm', ord = 'A2,A3,B1', ord);
+
+  -- đổi thứ tự: chỉ chủ phòng/DJ, chỉ bài đang chờ
+  perform t.throws('đổi thứ tự: người nghe không đổi được', format($f$select public.room_reorder(%L, (select id from public.room_queue where room_id = %L and title = 'B1'), -5)$f$, rid, rid), '%không có quyền%');
+  perform t.as_user(a);
+  select id into qid from public.room_queue where room_id = rid and title = 'B1';
+  perform public.room_reorder(rid, qid, (select min(position) - 1 from public.room_queue where room_id = rid and status = 'queued'));
+  select string_agg(title, ',' order by position) into ord from public.room_queue where room_id = rid and status = 'queued';
+  perform t.check('đổi thứ tự: đưa một bài lên đầu hàng đợi', ord = 'B1,A2,A3', ord);
+  select position into x from public.room_queue where room_id = rid and title = 'A1';
+  select id into qid from public.room_queue where room_id = rid and title = 'A1';
+  perform public.room_reorder(rid, qid, 9999);
+  perform t.check('đổi thứ tự: bài đang phát không bị đổi vị trí', (select position from public.room_queue where id = qid) = x);
 
   -- ================= NHỊP TIM + TỰ TẠM DỪNG =================
   perform t.as_user(a);

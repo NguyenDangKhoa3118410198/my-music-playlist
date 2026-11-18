@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getRoomHistory, getRoomHistoryCount, getRoomMembers, getRoomQueue, getRoomState } from '../lib/roomApi';
+import {
+  type FloatingReaction,
+  isReaction,
+  MAX_FLOATING_REACTIONS,
+  REACTION_LIFETIME_MS,
+  REACTION_THROTTLE_MS,
+} from '../lib/reactions';
 import { supabase } from '../lib/supabase';
 import type { RoomMember, RoomQueueItem, RoomState } from '../types';
 
@@ -30,6 +38,10 @@ export function useRoomRealtime(roomId: string | null, userId: string, { history
   const [error, setError] = useState('');
   const aliveRef = useRef(true);
   const connectedRef = useRef(false);
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  const lastReactionAtRef = useRef(0);
+  const reactionSeqRef = useRef(0);
+  const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const historyOpenRef = useRef(historyOpen);
   historyOpenRef.current = historyOpen;
 
@@ -94,6 +106,16 @@ export function useRoomRealtime(roomId: string | null, userId: string, { history
     }
   }, [roomId]);
 
+  // Thả cảm xúc cho cả phòng. Giới hạn tần suất mỗi máy để không làm tràn hạn mức tin Realtime.
+  const sendReaction = useCallback((emoji: string) => {
+    const channel = channelRef.current;
+    const now = Date.now();
+    if (!channel || !connectedRef.current || !isReaction(emoji)) return;
+    if (now - lastReactionAtRef.current < REACTION_THROTTLE_MS) return;
+    lastReactionAtRef.current = now;
+    void channel.send({ type: 'broadcast', event: 'reaction', payload: { emoji } });
+  }, []);
+
   // Mở tab "Đã phát" thì tải danh sách ngay.
   useEffect(() => {
     if (historyOpen) void refreshHistory();
@@ -108,9 +130,21 @@ export function useRoomRealtime(roomId: string | null, userId: string, { history
     // Tải ngay, không chờ Realtime: nếu kênh kết nối chậm hoặc lỗi thì màn hình vẫn có dữ liệu.
     void loadAll();
 
+    // self: true để chính người gửi cũng thấy emoji của mình bay lên (qua cùng một đường với mọi người).
     const channel = supabase.channel(`room:${roomId}`, {
-      config: { presence: { key: userId } },
+      config: { presence: { key: userId }, broadcast: { self: true } },
     });
+    channelRef.current = channel;
+
+    const showReaction = (emoji: unknown) => {
+      if (!isReaction(emoji)) return;
+      reactionSeqRef.current += 1;
+      const id = reactionSeqRef.current;
+      setReactions((prev) => [...prev.slice(-(MAX_FLOATING_REACTIONS - 1)), { id, emoji, left: 8 + Math.random() * 84 }]);
+      window.setTimeout(() => {
+        if (aliveRef.current) setReactions((prev) => prev.filter((reaction) => reaction.id !== id));
+      }, REACTION_LIFETIME_MS);
+    };
 
     channel
       .on(
@@ -139,6 +173,7 @@ export function useRoomRealtime(roomId: string | null, userId: string, { history
           if ((payload.new as { closed_at?: string | null }).closed_at) setClosed(true);
         },
       )
+      .on('broadcast', { event: 'reaction' }, ({ payload }) => showReaction((payload as { emoji?: unknown } | null)?.emoji))
       .on('presence', { event: 'sync' }, () => {
         setOnlineIds(new Set(Object.keys(channel.presenceState())));
       })
@@ -167,11 +202,12 @@ export function useRoomRealtime(roomId: string | null, userId: string, { history
 
     return () => {
       aliveRef.current = false;
+      channelRef.current = null;
       window.clearInterval(poll);
       document.removeEventListener('visibilitychange', onVisible);
       void supabase.removeChannel(channel);
     };
   }, [roomId, userId, applyState, refreshState, refreshQueue, refreshHistoryMaybe, refreshMembers]);
 
-  return { state, queue, history, historyCount, members, onlineIds, connected, closed, error, applyState, refreshState };
+  return { state, queue, history, historyCount, members, onlineIds, connected, closed, error, applyState, refreshState, refreshQueue, reactions, sendReaction };
 }

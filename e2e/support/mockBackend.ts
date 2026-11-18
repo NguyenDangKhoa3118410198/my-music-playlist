@@ -98,6 +98,24 @@ export function fakeSession(userId: string, name: string, anonymous = false) {
   };
 }
 
+/** Giải mã khung nhị phân "userBroadcastPush" của realtime-js (xem lib/serializer.js của thư viện). */
+function decodeBroadcastPush(buf: Buffer): [string | null, string | null, string, string, Record<string, any>] | null {
+  if (buf[0] !== 3) return null;
+  let offset = 7;
+  const take = (length: number) => {
+    const text = buf.subarray(offset, offset + length).toString('utf8');
+    offset += length;
+    return text;
+  };
+  const joinRef = take(buf[1]);
+  const ref = take(buf[2]);
+  const topic = take(buf[3]);
+  const event = take(buf[4]);
+  take(buf[5]); // metadata
+  const payload = JSON.parse(buf.subarray(offset).toString('utf8'));
+  return [joinRef || null, ref || null, topic, 'broadcast', { type: 'broadcast', event, payload }];
+}
+
 export class MockBackend {
   opts: Required<Omit<MockOptions, 'songs' | 'library'>> & {
     songs: NonNullable<MockOptions['songs']>;
@@ -116,6 +134,8 @@ export class MockBackend {
     [GUEST, 'Lan'],
   ]);
   rpcCalls: { fn: string; body: Record<string, unknown> }[] = [];
+  // Tin Realtime Broadcast mà trình duyệt đã gửi (ví dụ emoji), để test kiểm tra.
+  broadcasts: { event: string; payload: unknown }[] = [];
   // Mọi yêu cầu đọc bảng (GET/HEAD), để test đếm số lần tải lại.
   restLog: { method: string; table: string; query: string }[] = [];
   private sockets: { ws: WebSocketRoute; topic: string; filters: { id: number; table: string }[] }[] = [];
@@ -367,6 +387,12 @@ export class MockBackend {
         this.queue = this.queue.filter((q) => q.id !== item.id);
         return { data: null };
       }
+      case 'room_reorder': {
+        if (!this.canControl()) return denied;
+        const item = this.queue.find((q) => q.id === body.p_queue && q.status === 'queued');
+        if (item) item.position = body.p_position as number;
+        return { data: null };
+      }
       case 'room_settle': {
         // Mô phỏng server: phòng bỏ hoang thì tạm dừng tại vị trí đã lưu.
         if (this.opts.staleRoomPausesAt >= 0 && this.state.status === 'playing') {
@@ -476,6 +502,13 @@ export class MockBackend {
     });
   }
 
+  /** Một người khác thả emoji: đẩy tin broadcast tới trình duyệt. */
+  remoteReaction(emoji: string) {
+    for (const sub of this.sockets) {
+      sub.ws.send(JSON.stringify([null, null, sub.topic, 'broadcast', { type: 'broadcast', event: 'reaction', payload: { emoji } }]));
+    }
+  }
+
   remoteAddSong(title: string, addedBy = GUEST) {
     this.remote((b) => b.addSong(title, addedBy));
   }
@@ -517,7 +550,13 @@ export class MockBackend {
         return;
       }
       ws.onMessage((raw) => {
-        const [joinRef, ref, topic, event, payload] = JSON.parse(String(raw)) as [string | null, string | null, string, string, Record<string, any>];
+        // realtime-js gửi tin broadcast của người dùng dạng nhị phân; các tin còn lại là JSON.
+        const frame =
+          typeof raw === 'string'
+            ? (JSON.parse(raw) as [string | null, string | null, string, string, Record<string, any>])
+            : decodeBroadcastPush(raw);
+        if (!frame) return;
+        const [joinRef, ref, topic, event, payload] = frame;
         if (event === 'phx_join') {
           const filters = ((payload.config?.postgres_changes ?? []) as { table: string }[]).map((f, i) => ({ id: i + 1, ...f }));
           this.sockets.push({ ws, topic, filters });
@@ -525,6 +564,12 @@ export class MockBackend {
           const online: Record<string, unknown> = {};
           this.members.forEach((m) => (online[m.user_id] = { metas: [{ phx_ref: m.user_id }] }));
           ws.send(JSON.stringify([joinRef, null, topic, 'presence_state', online]));
+        } else if (event === 'broadcast') {
+          // Mô phỏng broadcast.self = true: server đẩy lại đúng tin đó cho người gửi.
+          const message = payload as { event: string; payload: unknown };
+          this.broadcasts.push({ event: message.event, payload: message.payload });
+          ws.send(JSON.stringify([null, null, topic, 'broadcast', payload]));
+          if (ref) ws.send(JSON.stringify([joinRef, ref, topic, 'phx_reply', { status: 'ok', response: {} }]));
         } else if (event === 'heartbeat') {
           ws.send(JSON.stringify([null, ref, 'phoenix', 'phx_reply', { status: 'ok', response: {} }]));
         } else if (ref) {

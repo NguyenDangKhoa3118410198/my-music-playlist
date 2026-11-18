@@ -11,6 +11,11 @@ Web app mobile-first để lưu bài hát karaoke, nghe nhạc từ YouTube và 
   phát/tạm dừng/tua đồng bộ giữa mọi người, vai trò chủ phòng/DJ/người nghe, tắt tiếng riêng trên máy mình.
   - **Đã phát:** lịch sử các bài đã phát hoặc bị bỏ qua (kèm lý do), bấm để thêm lại vào hàng đợi.
   - **Thêm playlist vào phòng**, hoặc bấm "Nghe cùng bạn bè" ở trang playlist để tạo phòng nạp sẵn playlist đó.
+  - **Đổi thứ tự hàng đợi:** chủ phòng/DJ dùng menu trên từng bài ("Phát tiếp theo", "Đưa lên", "Đưa xuống").
+  - **Mời bằng mã QR** (menu ba chấm của phòng) và **chế độ màn hình lớn**: video to, mã QR để mọi người quét vào
+    thêm bài từ điện thoại, danh sách bài tiếp theo. Dùng khi một máy nối TV/loa.
+  - **Thả cảm xúc** (👏 ❤️ 🔥 😂 🎤) bay lên trên video của cả phòng. Gửi qua Realtime Broadcast, không lưu vào
+    database; mỗi máy tối đa ~3 lần/giây để không vượt hạn mức tin nhắn của gói Free.
   - **Vòng đời phòng:** rời phòng, đóng phòng (chủ phòng), "Phòng gần đây" ở trang chủ. Phòng bỏ hoang tự tạm
     dừng tại chỗ người cuối cùng nghe tới, và tự đóng sau 7 ngày không ai dùng (xoá hẳn sau 30 ngày kể từ lúc đóng).
 
