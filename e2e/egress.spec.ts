@@ -1,14 +1,9 @@
-import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, test, joinRoom } from './fixtures';
 import type { MockBackend } from './support/mockBackend';
 
 // Gói Free của Supabase giới hạn băng thông (5 GB/tháng), nên phòng không được tải lại dày khi không cần.
 const SONGS = [{ title: 'Nơi này có anh' }, { title: 'Em của ngày hôm qua' }, { title: 'Bài thứ ba' }];
 
-const joinRoom = async (page: Page) => {
-  await page.goto('/room/K7Q2MX');
-  await page.getByRole('button', { name: /tham gia nghe/i }).click();
-};
 const stateReads = (backend: MockBackend) => backend.restLog.filter((r) => r.table === 'room_state').length;
 const historyReads = (backend: MockBackend, method: 'GET' | 'HEAD') =>
   backend.restLog.filter((r) => r.table === 'room_queue' && r.method === method && r.query.includes('played')).length;

@@ -7,7 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test --experimental-strip-types src/lib/syncMath.test.ts src/lib/supabaseEnv.test.ts src/lib/queueOrder.test.ts",
+    "test": "node --test --experimental-strip-types src/lib/syncMath.test.ts src/lib/supabaseEnv.test.ts src/lib/queueOrder.test.ts src/lib/roomPeople.test.ts",
     "e2e": "playwright test",
     "test:sql": "bash supabase/tests/run.sh"
   },

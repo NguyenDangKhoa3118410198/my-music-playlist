@@ -1,4 +1,5 @@
 import { History, Plus } from 'lucide-react';
+import { addedByLabel, membersById } from '../../lib/roomPeople';
 import { getVideoThumbnail } from '../../lib/youtube';
 import type { RoomEndReason, RoomMember, RoomQueueItem } from '../../types';
 
@@ -36,7 +37,7 @@ export function HistoryPanel({ items, members, userId, onRequeue }: Props) {
     );
   }
 
-  const nameById = new Map(members.map((member) => [member.user_id, member.display_name]));
+  const nameById = membersById(members);
 
   return (
     <ul className="room-list" aria-label="Đã phát">
@@ -44,7 +45,7 @@ export function HistoryPanel({ items, members, userId, onRequeue }: Props) {
         const thumb = getVideoThumbnail(item.video_id);
         const reason = item.end_reason ?? (item.status === 'skipped' ? 'skip' : 'ended');
         const failed = item.status === 'skipped';
-        const who = item.added_by === userId ? 'bạn' : nameById.get(item.added_by) || 'Khách';
+        const who = addedByLabel(item.added_by, userId, nameById);
 
         return (
           <li key={item.id} className="room-item history">

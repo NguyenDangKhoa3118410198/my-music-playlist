@@ -60,15 +60,39 @@ export function useRoomRealtime(roomId: string | null, userId: string, { history
     }
   }, [roomId, applyState]);
 
+  // Cập nhật lạc quan: thao tác hàng đợi của chính mình hiện ngay, không chờ máy chủ. Trong lúc thao tác chưa xong,
+  // mọi kết quả tải hàng đợi (Realtime, tải định kỳ) đều mang dữ liệu cũ, nên bị bỏ qua để danh sách không giật ngược.
+  const pendingQueueOpsRef = useRef(0);
+  const queueOpSeqRef = useRef(0);
+
   const refreshQueue = useCallback(async () => {
     if (!roomId) return;
+    const seq = queueOpSeqRef.current;
     try {
       const next = await getRoomQueue(roomId);
-      if (aliveRef.current) setQueue(next);
+      if (!aliveRef.current || pendingQueueOpsRef.current > 0 || seq !== queueOpSeqRef.current) return;
+      setQueue(next);
     } catch {
       /* lần tải sau sẽ thử lại */
     }
   }, [roomId]);
+
+  // Đổi hàng đợi tại chỗ ngay (change), rồi gửi lên máy chủ (action). Xong thì tải lại một lần để khớp với máy chủ;
+  // lỗi thì tải lại để hoàn về trạng thái thật và ném lỗi cho nơi gọi báo người dùng.
+  const mutateQueue = useCallback(
+    async (change: (queue: RoomQueueItem[]) => RoomQueueItem[], action: () => Promise<unknown>) => {
+      queueOpSeqRef.current += 1;
+      pendingQueueOpsRef.current += 1;
+      setQueue(change);
+      try {
+        await action();
+      } finally {
+        pendingQueueOpsRef.current -= 1;
+        await refreshQueue();
+      }
+    },
+    [refreshQueue],
+  );
 
   const refreshHistory = useCallback(async () => {
     if (!roomId) return;
@@ -209,5 +233,5 @@ export function useRoomRealtime(roomId: string | null, userId: string, { history
     };
   }, [roomId, userId, applyState, refreshState, refreshQueue, refreshHistoryMaybe, refreshMembers]);
 
-  return { state, queue, history, historyCount, members, onlineIds, connected, closed, error, applyState, refreshState, refreshQueue, reactions, sendReaction };
+  return { state, queue, history, historyCount, members, onlineIds, connected, closed, error, applyState, refreshState, refreshQueue, mutateQueue, reactions, sendReaction };
 }

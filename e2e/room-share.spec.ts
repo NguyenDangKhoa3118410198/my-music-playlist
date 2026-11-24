@@ -1,12 +1,8 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, test, joinRoom } from './fixtures';
 
 const SONGS = [{ title: 'Đang phát' }, { title: 'Bài B' }, { title: 'Bài C' }];
 
-const joinRoom = async (page: Page) => {
-  await page.goto('/room/K7Q2MX');
-  await page.getByRole('button', { name: /tham gia nghe/i }).click();
-};
 const openRoomMenu = (page: Page) => page.getByRole('button', { name: 'Tuỳ chọn phòng' }).click();
 
 test.describe('mời bạn bè bằng QR', () => {

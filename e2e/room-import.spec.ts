@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, test, joinRoom } from './fixtures';
 
 const LIB = [
   {
@@ -15,10 +15,6 @@ const LIB = [
   { name: 'Nhạc trẻ', songs: Array.from({ length: 8 }, (_, i) => ({ title: `Nhạc trẻ ${i + 1}` })) },
 ];
 
-const joinRoom = async (page: Page) => {
-  await page.goto('/room/K7Q2MX');
-  await page.getByRole('button', { name: /tham gia nghe/i }).click();
-};
 const openImport = async (page: Page) => {
   await page.getByRole('button', { name: /Thêm từ playlist của bạn/ }).click();
   return page.getByRole('dialog', { name: 'Thêm từ playlist' });

@@ -1,6 +1,7 @@
 import { type KeyboardEvent, type PointerEvent, useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ArrowUpToLine, GripVertical, ListOrdered, Music2, Trash2 } from 'lucide-react';
 import { movePosition, positionAtIndex, type QueueMove } from '../../lib/queueOrder';
+import { addedByLabel, membersById } from '../../lib/roomPeople';
 import { getVideoThumbnail } from '../../lib/youtube';
 import type { RoomMember, RoomQueueItem } from '../../types';
 import { Menu } from '../ui/Menu';
@@ -74,7 +75,7 @@ export function QueuePanel({ items, currentId, playing, members, userId, canCont
     );
   }
 
-  const nameById = new Map(members.map((member) => [member.user_id, member.display_name]));
+  const nameById = membersById(members);
   const currentIndex = items.findIndex((item) => item.id === currentId);
 
   // Tính lại dòng đang được trỏ tới và độ lệch của dòng đang kéo (sau khi con trỏ hoặc khung cuộn nhúc nhích).
@@ -168,7 +169,7 @@ export function QueuePanel({ items, currentId, playing, members, userId, canCont
         const isCurrent = item.id === currentId;
         const canRemove = canControl || item.added_by === userId;
         const thumb = getVideoThumbnail(item.video_id);
-        const who = item.added_by === userId ? 'bạn' : nameById.get(item.added_by) || 'Khách';
+        const who = addedByLabel(item.added_by, userId, nameById);
         // Chỉ hiện thao tác nào thực sự đổi được thứ tự (bài đã ở đầu thì không có "Đưa lên").
         const canMove = (move: QueueMove) => canControl && movePosition(items, item.id, currentId, move) !== null;
 

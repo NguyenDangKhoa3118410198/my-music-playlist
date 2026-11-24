@@ -1,5 +1,5 @@
-import { useState } from 'react';
 import { Check, Link2 } from 'lucide-react';
+import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
 import { buildRoomUrl } from '../../lib/roomApi';
 import { Dialog } from '../ui/Dialog';
 import { QrCode } from './QrCode';
@@ -7,18 +7,8 @@ import { QrCode } from './QrCode';
 type Props = { code: string; roomName: string; onClose: () => void };
 
 export function InviteDialog({ code, roomName, onClose }: Props) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
   const url = buildRoomUrl(code);
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* trình duyệt chặn clipboard: link vẫn hiện sẵn bên dưới để chép tay */
-    }
-  }
 
   return (
     <Dialog
@@ -26,7 +16,7 @@ export function InviteDialog({ code, roomName, onClose }: Props) {
       subtitle={`Quét mã hoặc nhập mã phòng để vào “${roomName}”.`}
       onClose={onClose}
       actions={
-        <button className="btn btn-primary btn-block" type="button" onClick={() => void copy()}>
+        <button className="btn btn-primary btn-block" type="button" onClick={() => void copy(url)}>
           {copied ? <Check size={17} /> : <Link2 size={17} />} {copied ? 'Đã chép link' : 'Chép link mời'}
         </button>
       }

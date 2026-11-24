@@ -1,4 +1,4 @@
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect, type Page } from '@playwright/test';
 import { MockBackend, type MockOptions } from './support/mockBackend';
 
 type Fixtures = {
@@ -26,3 +26,13 @@ export const ytLast = (page: import('@playwright/test').Page, method: string) =>
   page.evaluate((m) => (window as unknown as { __yt: { last: (n: string) => unknown } }).__yt.last(m), method) as Promise<
     { method: string; args: unknown[] } | undefined
   >;
+
+/** Vào phòng nghe chung K7Q2MX và bấm "tham gia nghe" để player giả bắt đầu phát. */
+export const joinRoom = async (page: Page) => {
+  await page.goto('/room/K7Q2MX');
+  await page.getByRole('button', { name: /tham gia nghe/i }).click();
+};
+
+/** Trạng thái YouTube của player giả đầu tiên (1 = đang phát, 2 = dừng). */
+export const playerState = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __yt: { players: { state: number }[] } }).__yt.players[0]?.state);

@@ -14,6 +14,7 @@ import { PlaylistDetail } from './app/PlaylistDetail';
 import { Sidebar, type AppView } from './app/Sidebar';
 import { TabBar } from './app/TabBar';
 import { TopBar } from './app/TopBar';
+import { useConfirm } from '../hooks/useConfirm';
 import { PlaylistDetailSkeleton } from './ui/Skeletons';
 import { PlayerBar } from './PlayerBar';
 import { SongForm } from './SongForm';
@@ -33,6 +34,7 @@ function sortForPlaylist(songs: Song[]) {
 
 export function PlaylistView({ inviteRedeemed }: { inviteRedeemed: string | null }) {
   const navigate = useNavigate();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const { pathname } = useLocation();
 
   const playlistMatch = pathname.match(/^\/playlist\/([^/]+)/);
@@ -215,7 +217,9 @@ export function PlaylistView({ inviteRedeemed }: { inviteRedeemed: string | null
   }
 
   async function handleDeletePlaylist() {
-    if (!activePlaylist || !window.confirm(`Xoá playlist “${activePlaylist.name}”?`)) return;
+    if (!activePlaylist) return;
+    const ok = await confirm({ title: 'Xoá playlist', message: `Xoá playlist “${activePlaylist.name}”?`, confirmLabel: 'Xoá', danger: true });
+    if (!ok) return;
     try {
       await deletePlaylist(activePlaylist.id);
       await loadAll();
@@ -251,7 +255,8 @@ export function PlaylistView({ inviteRedeemed }: { inviteRedeemed: string | null
   }
 
   async function handleDeleteSong(song: Song) {
-    if (!window.confirm(`Xoá bài “${song.title}”?`)) return;
+    const ok = await confirm({ title: 'Xoá bài hát', message: `Xoá bài “${song.title}”?`, confirmLabel: 'Xoá', danger: true });
+    if (!ok) return;
     try {
       await deleteSong(song.id);
       setSongs((current) => current.filter((item) => item.id !== song.id));
@@ -406,6 +411,7 @@ export function PlaylistView({ inviteRedeemed }: { inviteRedeemed: string | null
         )}
       </main>
 
+      {confirmDialog}
       <input ref={fileInputRef} hidden type="file" accept="application/json" onChange={handleImport} />
       {message && (
         <div className="toast" role="status">

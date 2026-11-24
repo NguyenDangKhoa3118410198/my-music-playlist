@@ -1,15 +1,7 @@
 import type { Page } from '@playwright/test';
-import { expect, test, ytCount, ytLast } from './fixtures';
+import { expect, joinRoom, playerState, test, ytCount, ytLast } from './fixtures';
 
 const SONGS = [{ title: 'Nơi này có anh' }, { title: 'Em của ngày hôm qua' }, { title: 'Bài thứ ba' }];
-
-const joinRoom = async (page: Page) => {
-  await page.goto('/room/K7Q2MX');
-  await page.getByRole('button', { name: /tham gia nghe/i }).click();
-};
-
-const playerState = (page: Page) =>
-  page.evaluate(() => (window as unknown as { __yt: { players: { state: number }[] } }).__yt.players[0]?.state);
 
 test.describe('phòng nghe chung', () => {
   test('cổng tham gia: chưa vào thì chưa phát, bấm vào mới phát đúng bài', async ({ page, mock }) => {

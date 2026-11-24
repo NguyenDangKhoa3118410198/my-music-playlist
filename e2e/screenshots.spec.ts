@@ -1,5 +1,5 @@
 // Chụp ảnh các màn hình chính để xem bằng mắt. Chạy: SHOT_DIR=e2e/.results/before npm run e2e -- e2e/screenshots.spec.ts
-import { test } from './fixtures';
+import { joinRoom, test } from './fixtures';
 
 const DIR = process.env.SHOT_DIR ?? 'e2e/.results/shots';
 const LIBRARY = [
@@ -21,8 +21,7 @@ const LONG = 'FULL VERSION | Vợ Hóa Điên Hủy Diệt Thế Giới Suốt 1
 test.describe('ảnh màn hình', () => {
   test('phòng đang phát', async ({ page, mock }, info) => {
     await mock({ songs: [{ title: LONG }, { title: 'Nơi này có anh', addedBy: 'bbbbbbbb-0000-4000-8000-000000000002' }, { title: 'Em của ngày hôm qua' }] });
-    await page.goto('/room/K7Q2MX');
-    await page.getByRole('button', { name: /tham gia nghe/i }).click();
+    await joinRoom(page);
     await page.waitForTimeout(600);
     await page.screenshot({ path: `${DIR}/room-playing-${info.project.name}.png`, fullPage: true });
   });
@@ -36,16 +35,14 @@ test.describe('ảnh màn hình', () => {
 
   test('phòng trống', async ({ page, mock }, info) => {
     await mock({});
-    await page.goto('/room/K7Q2MX');
-    await page.getByRole('button', { name: /tham gia nghe/i }).click();
+    await joinRoom(page);
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${DIR}/room-empty-${info.project.name}.png`, fullPage: true });
   });
 
   test('người nghe (không có quyền)', async ({ page, mock }, info) => {
     await mock({ role: 'listener', songs: [{ title: 'Nơi này có anh' }, { title: 'Bài thứ hai' }] });
-    await page.goto('/room/K7Q2MX');
-    await page.getByRole('button', { name: /tham gia nghe/i }).click();
+    await joinRoom(page);
     await page.getByRole('tab', { name: /mọi người/i }).click();
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${DIR}/room-listener-members-${info.project.name}.png`, fullPage: true });

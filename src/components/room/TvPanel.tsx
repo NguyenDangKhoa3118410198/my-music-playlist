@@ -1,3 +1,4 @@
+import { addedByLabel, membersById } from '../../lib/roomPeople';
 import { getVideoThumbnail } from '../../lib/youtube';
 import type { RoomMember, RoomQueueItem } from '../../types';
 import { QrCode } from './QrCode';
@@ -14,7 +15,7 @@ const SHOWN = 5;
 
 // Cột bên phải của chế độ màn hình lớn: mã QR để mọi người quét vào thêm bài, và các bài sắp tới.
 export function TvPanel({ code, url, upcoming, members, userId }: Props) {
-  const nameById = new Map(members.map((member) => [member.user_id, member.display_name]));
+  const nameById = membersById(members);
 
   return (
     <div className="tv-panel">
@@ -35,7 +36,7 @@ export function TvPanel({ code, url, upcoming, members, userId }: Props) {
         <ol className="tv-next" aria-label="Bài tiếp theo">
           {upcoming.slice(0, SHOWN).map((item, index) => {
             const thumb = getVideoThumbnail(item.video_id);
-            const who = item.added_by === userId ? 'bạn' : nameById.get(item.added_by) || 'Khách';
+            const who = addedByLabel(item.added_by, userId, nameById);
             return (
               <li key={item.id}>
                 <span className="tv-index">{index + 1}</span>

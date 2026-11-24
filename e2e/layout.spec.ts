@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures';
+import { expect, joinRoom, test } from './fixtures';
 
 const LONG = 'FULL VERSION | Vợ Hóa Điên Hủy Diệt Thế Giới Suốt 10 Năm, Hệ Thống Hết Cách Đành Hồi Sinh Tôi';
 const SONGS = [{ title: LONG }, { title: 'Nơi này có anh' }, { title: 'Em của ngày hôm qua' }, { title: 'Bài thứ tư' }, { title: 'Bài thứ năm' }];
@@ -33,8 +33,7 @@ test.describe('bố cục và giao diện', () => {
   test('điện thoại: video dính ở trên khi cuộn, thanh thêm link dính ở đáy', async ({ page, mock }, info) => {
     test.skip(info.project.name !== 'mobile');
     await mock({ songs: SONGS });
-    await page.goto('/room/K7Q2MX');
-    await page.getByRole('button', { name: /tham gia nghe/i }).click();
+    await joinRoom(page);
 
     const viewport = page.viewportSize()!;
     await page.evaluate(() => window.scrollTo(0, 600));
@@ -51,8 +50,7 @@ test.describe('bố cục và giao diện', () => {
 
   test('nút chạm đủ lớn (>= 44px) và có tên cho trình đọc màn hình', async ({ page, mock }) => {
     await mock({ songs: SONGS });
-    await page.goto('/room/K7Q2MX');
-    await page.getByRole('button', { name: /tham gia nghe/i }).click();
+    await joinRoom(page);
 
     for (const name of ['Tạm dừng', 'Bài tiếp theo', 'Về trang chủ', 'Thêm vào hàng đợi']) {
       const box = (await page.getByRole('button', { name, exact: true }).first().boundingBox())!;
@@ -99,8 +97,7 @@ test.describe('bố cục và giao diện', () => {
   test('giảm chuyển động: tắt hiệu ứng khi người dùng yêu cầu', async ({ page, mock }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await mock({ songs: SONGS });
-    await page.goto('/room/K7Q2MX');
-    await page.getByRole('button', { name: /tham gia nghe/i }).click();
+    await joinRoom(page);
 
     await expect(page.locator('.eq i').first()).toHaveCSS('animation-name', 'none');
   });

@@ -134,7 +134,6 @@ test.describe('trang chủ và playlist', () => {
 
   test('menu ba chấm của bài: sửa và xoá; Esc đóng menu', async ({ page, mock }) => {
     const backend = await mock({ library: LIBRARY });
-    page.on('dialog', (d) => void d.accept());
     await page.goto('/');
     await page.locator('.pl-card', { hasText: 'Bài tủ cuối tuần' }).click();
 
@@ -145,8 +144,32 @@ test.describe('trang chủ và playlist', () => {
 
     await page.getByRole('button', { name: 'Thao tác với Bolero tình yêu' }).click();
     await page.getByRole('menuitem', { name: 'Xoá bài hát' }).click();
+    const confirm = page.getByRole('dialog', { name: 'Xoá bài hát' });
+    await expect(confirm).toContainText('Xoá bài “Bolero tình yêu”?');
+    await confirm.getByRole('button', { name: 'Xoá', exact: true }).click();
     await expect(page.getByText('Bolero tình yêu')).toHaveCount(0);
     expect(backend.writes.some((w) => w.method === 'DELETE' && w.table === 'songs')).toBe(true);
+  });
+
+  test('xoá bài: huỷ (nút Huỷ, Esc) thì bài vẫn còn và không gọi xoá', async ({ page, mock }) => {
+    const backend = await mock({ library: LIBRARY });
+    await page.goto('/');
+    await page.locator('.pl-card', { hasText: 'Bài tủ cuối tuần' }).click();
+
+    await page.getByRole('button', { name: 'Thao tác với Bolero tình yêu' }).click();
+    await page.getByRole('menuitem', { name: 'Xoá bài hát' }).click();
+    const confirm = page.getByRole('dialog', { name: 'Xoá bài hát' });
+    await confirm.getByRole('button', { name: 'Huỷ' }).click();
+    await expect(confirm).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Thao tác với Bolero tình yêu' }).click();
+    await page.getByRole('menuitem', { name: 'Xoá bài hát' }).click();
+    await expect(confirm).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(confirm).toHaveCount(0);
+
+    await expect(page.getByText('Bolero tình yêu').first()).toBeVisible();
+    expect(backend.writes.some((w) => w.method === 'DELETE')).toBe(false);
   });
 
   test('chia sẻ: tạo link mời hiện ô sao chép', async ({ page, mock }) => {
@@ -180,12 +203,14 @@ test.describe('trang chủ và playlist', () => {
 
   test('xoá playlist: menu tuỳ chọn, hỏi xác nhận, về thư viện', async ({ page, mock }) => {
     const backend = await mock({ library: LIBRARY });
-    page.on('dialog', (d) => void d.accept());
     await page.goto('/');
     await page.locator('.pl-card', { hasText: 'Nhạc trẻ' }).click();
 
     await page.getByRole('button', { name: 'Thêm tuỳ chọn' }).click();
     await page.getByRole('menuitem', { name: 'Xoá playlist' }).click();
+    const confirm = page.getByRole('dialog', { name: 'Xoá playlist' });
+    await expect(confirm).toContainText('Xoá playlist “Nhạc trẻ”?');
+    await confirm.getByRole('button', { name: 'Xoá', exact: true }).click();
 
     await expect(page).toHaveURL(/\/library$/);
     await expect(page.locator('.pl-card', { hasText: 'Nhạc trẻ' })).toHaveCount(0);

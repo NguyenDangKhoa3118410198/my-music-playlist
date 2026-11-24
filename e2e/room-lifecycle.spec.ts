@@ -1,12 +1,8 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, test, joinRoom } from './fixtures';
 
 const SONGS = [{ title: 'Nơi này có anh' }, { title: 'Em của ngày hôm qua' }];
 
-const joinRoom = async (page: Page) => {
-  await page.goto('/room/K7Q2MX');
-  await page.getByRole('button', { name: /tham gia nghe/i }).click();
-};
 const openMenu = (page: Page) => page.getByRole('button', { name: 'Tuỳ chọn phòng' }).click();
 const calls = (backend: { rpcCalls: { fn: string }[] }, fn: string) => backend.rpcCalls.filter((c) => c.fn === fn).length;
 
@@ -47,40 +43,43 @@ test.describe('vòng đời phòng', () => {
 
   test('rời phòng (người nghe): hỏi xác nhận rồi về trang chủ', async ({ page, mock }) => {
     const backend = await mock({ role: 'listener', songs: SONGS });
-    let asked = '';
-    page.once('dialog', (d) => { asked = d.message(); void d.accept(); });
     await joinRoom(page);
 
     await openMenu(page);
     await expect(page.getByRole('menuitem', { name: 'Đóng phòng cho mọi người' })).toHaveCount(0); // chỉ chủ phòng mới có
     await page.getByRole('menuitem', { name: 'Rời phòng' }).click();
+    const confirm = page.getByRole('dialog', { name: 'Rời phòng' });
+    await expect(confirm).toContainText('Rời phòng này?');
+    await confirm.getByRole('button', { name: 'Rời phòng' }).click();
 
     await expect(page).toHaveURL(/\/$/);
-    expect(asked).toBe('Rời phòng này?');
     expect(calls(backend, 'room_leave')).toBe(1);
   });
 
   test('chủ phòng rời: cảnh báo sẽ chuyển quyền; huỷ xác nhận thì không làm gì', async ({ page, mock }) => {
     const backend = await mock({ songs: SONGS });
-    let asked = '';
-    page.once('dialog', (d) => { asked = d.message(); void d.dismiss(); });
     await joinRoom(page);
 
     await openMenu(page);
     await page.getByRole('menuitem', { name: 'Rời phòng' }).click();
+    const confirm = page.getByRole('dialog', { name: 'Rời phòng' });
+    await expect(confirm).toContainText('chuyển quyền chủ phòng');
+    await confirm.getByRole('button', { name: 'Huỷ' }).click();
 
-    await expect.poll(() => asked).toContain('chuyển quyền chủ phòng');
+    await expect(confirm).toHaveCount(0);
     expect(calls(backend, 'room_leave')).toBe(0);
     await expect(page).toHaveURL(/\/room\/K7Q2MX$/);
   });
 
   test('đóng phòng cho mọi người: chỉ chủ phòng thấy, có xác nhận, rồi về trang chủ', async ({ page, mock }) => {
     const backend = await mock({ songs: SONGS });
-    page.once('dialog', (d) => void d.accept());
     await joinRoom(page);
 
     await openMenu(page);
     await page.getByRole('menuitem', { name: 'Đóng phòng cho mọi người' }).click();
+    const confirm = page.getByRole('dialog', { name: 'Đóng phòng' });
+    await expect(confirm).toContainText('Không ai vào lại được nữa');
+    await confirm.getByRole('button', { name: 'Đóng phòng' }).click();
 
     await expect(page).toHaveURL(/\/$/);
     expect(calls(backend, 'room_close')).toBe(1);

@@ -1,12 +1,8 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, test, joinRoom } from './fixtures';
 
 const SONGS = [{ title: 'Nơi này có anh' }, { title: 'Em của ngày hôm qua' }, { title: 'Bài thứ ba' }];
 
-const joinRoom = async (page: Page) => {
-  await page.goto('/room/K7Q2MX');
-  await page.getByRole('button', { name: /tham gia nghe/i }).click();
-};
 const historyTab = (page: Page) => page.getByRole('tab', { name: /Đã phát/ });
 const historyList = (page: Page) => page.getByRole('list', { name: 'Đã phát' });
 const fire = (page: Page, fn: 'fireEnded' | 'fireError') =>

@@ -59,6 +59,8 @@ export type MockOptions = {
   history?: { title: string; reason?: 'ended' | 'skip' | 'unplayable'; addedBy?: string; minutesAgo?: number }[];
   /** Server "tự tạm dừng" phòng bỏ hoang khi client gọi room_settle: đặt vị trí này và chuyển sang paused. */
   staleRoomPausesAt?: number;
+  /** Các RPC trả lỗi (để test hoàn lại sau cập nhật lạc quan). */
+  failRpc?: string[];
   /** Phòng đã đóng từ đầu. */
   closed?: boolean;
   /** Người dùng là khách ẩn danh (không có playlist). */
@@ -161,6 +163,7 @@ export class MockBackend {
       closed: false,
       anonymous: false,
       recentRooms: [],
+      failRpc: [],
       ...opts,
     };
     this.signedIn = this.opts.signedIn;
@@ -624,7 +627,7 @@ export class MockBackend {
       const fn = path.split('/').pop()!;
       const body = (req.postDataJSON() ?? {}) as Record<string, unknown>;
       this.rpcCalls.push({ fn, body });
-      const result = this.rpc(fn, body);
+      const result = this.opts.failRpc.includes(fn) ? { error: 'Lỗi máy chủ (giả lập).' } : this.rpc(fn, body);
       if ('error' in result) return json({ code: 'P0001', message: result.error, details: null, hint: null }, 400);
       if (fn !== 'server_time') this.broadcast();
       return json(result.data);

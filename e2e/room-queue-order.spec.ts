@@ -1,12 +1,8 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, test, joinRoom } from './fixtures';
 
 const SONGS = [{ title: 'Đang phát' }, { title: 'Bài B' }, { title: 'Bài C' }, { title: 'Bài D' }];
 
-const joinRoom = async (page: Page) => {
-  await page.goto('/room/K7Q2MX');
-  await page.getByRole('button', { name: /tham gia nghe/i }).click();
-};
 const titles = (page: Page) =>
   page.getByRole('list', { name: 'Hàng đợi' }).locator('.room-item-text strong').allTextContents();
 const grip = (page: Page, title: string) => page.getByRole('button', { name: `Kéo để đổi chỗ “${title}”` });
@@ -35,7 +31,7 @@ test.describe('thứ tự hàng đợi', () => {
     await page.getByRole('menuitem', { name: 'Phát tiếp theo' }).click();
 
     await expect.poll(() => titles(page)).toEqual(['Đang phát', 'Bài D', 'Bài B', 'Bài C']);
-    expect(backend.rpcCalls.filter((c) => c.fn === 'room_reorder')).toHaveLength(1);
+    await expect.poll(() => backend.rpcCalls.filter((c) => c.fn === 'room_reorder').length).toBe(1);
   });
 
   test('đưa lên / xuống một bậc, và chỉ hiện thao tác có tác dụng', async ({ page, mock }) => {
@@ -95,7 +91,7 @@ test.describe('thứ tự hàng đợi', () => {
 
       await dragTo(page, 'Bài D', 'Bài B');
       await expect.poll(() => titles(page)).toEqual(['Đang phát', 'Bài D', 'Bài B', 'Bài C']);
-      expect(backend.rpcCalls.filter((c) => c.fn === 'room_reorder')).toHaveLength(1);
+      await expect.poll(() => backend.rpcCalls.filter((c) => c.fn === 'room_reorder').length).toBe(1);
     });
 
     test('kéo bài xuống', async ({ page, mock }) => {
@@ -136,7 +132,7 @@ test.describe('thứ tự hàng đợi', () => {
       await grip(page, 'Bài C').click();
       await page.waitForTimeout(300);
       expect(await titles(page)).toEqual(['Đang phát', 'Bài B', 'Bài C', 'Bài D']);
-      expect(backend.rpcCalls.filter((c) => c.fn === 'room_reorder')).toHaveLength(0);
+      await expect.poll(() => backend.rpcCalls.filter((c) => c.fn === 'room_reorder').length).toBe(0);
     });
 
     test('bàn phím: mũi tên lên/xuống ở tay cầm', async ({ page, mock }) => {
@@ -188,6 +184,6 @@ test.describe('thứ tự hàng đợi', () => {
     await page.mouse.up();
 
     await expect.poll(async () => (await titles(page)).slice(0, 4)).toEqual(['Bài 00', 'Bài 01', 'Bài 13', 'Bài 02']);
-    expect(backend.rpcCalls.filter((c) => c.fn === 'room_reorder')).toHaveLength(1);
+    await expect.poll(() => backend.rpcCalls.filter((c) => c.fn === 'room_reorder').length).toBe(1);
   });
 });
